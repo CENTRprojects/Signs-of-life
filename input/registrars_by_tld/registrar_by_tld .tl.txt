@@ -1,0 +1,8 @@
+united-domains.tl
+eurodns.tl
+markmonitor.tl
+hpe.tl
+101domain.tl
+gandi.tl
+ovh.tl
+godaddy.tl

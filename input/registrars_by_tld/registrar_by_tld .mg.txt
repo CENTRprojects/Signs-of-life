@@ -1,0 +1,6 @@
+godaddy.mg
+markmonitor.mg
+orange-business.mg
+eurodns.mg
+ovh.mg
+key-systems.mg

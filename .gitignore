@@ -1,0 +1,15 @@
+app_domains/__pycache__
+.vscode/*
+env/*
+.env
+*.csv
+*.pyc
+inter/*.json
+inter/urls/*.json
+~$*
+completed/*
+*.log
+screenlog*
+output/*
+.docker/docker_volumes
+.docker-compose.env

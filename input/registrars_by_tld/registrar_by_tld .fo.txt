@@ -1,0 +1,7 @@
+fc.fo
+101domain.fo
+godaddy.fo
+domaininfo.fo
+gratisdns.fo
+markmonitor.fo
+ports.fo

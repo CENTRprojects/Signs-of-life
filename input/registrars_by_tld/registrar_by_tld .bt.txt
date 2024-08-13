@@ -1,0 +1,4 @@
+godaddy.bt
+united-domains.bt
+markmonitor.bt
+101domain.bt

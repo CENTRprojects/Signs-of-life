@@ -1,0 +1,11 @@
+marcaria.com.py
+piensasolutions.com.py
+hpe.com.py
+safenames.com.py
+101domain.com.py
+godaddy.com.py
+eurodns.com.py
+internetx.com.py
+dominiando.com.py
+orange-business.com.py
+united-domains.com.py

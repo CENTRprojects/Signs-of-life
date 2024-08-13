@@ -1,0 +1,2 @@
+adonis.media
+nextin.media

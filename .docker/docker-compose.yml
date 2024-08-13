@@ -1,0 +1,38 @@
+services:
+  crawler:
+    build:
+      context: ../
+      dockerfile: ./.docker/Dockerfile
+    volumes:
+      - ../app_domains:/signs-of-life/app_domains
+      - ../input:/signs-of-life/input
+      - ../logging:/signs-of-life/logging
+      - ../output:/signs-of-life/output
+      - ../inter:/signs-of-life/inter
+      - ../processing:/signs-of-life/processing
+      - ../completed:/signs-of-life/completed
+      - ../done:/signs-of-life/done
+      - ./data:/signs-of-life/data
+      - ./bin/entrypoint.sh:/signs-of-life/entrypoint.sh
+      - .env:/signs-of-life/.env
+      - /web/signs-of-life/:/signs-of-life
+    env_file:
+      - .env
+    deploy:
+      replicas: 2 
+    depends_on:
+      - dbpostgres
+      
+  dbpostgres:
+    image: postgres:15.2
+    environment:
+        POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+        POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+        POSTGRES_DB: "signs_of_life"
+    expose:
+        - "${POSTGRES_PORT}:5432"
+    ports:
+        - "${POSTGRES_EXTERNAL_PORT:-54320}:5432"
+    volumes:
+        - ./docker_volumes/postgresdb/data:/var/lib/postgresql/data
+        - ./main-db/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d

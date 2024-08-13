@@ -1,0 +1,4 @@
+godaddy.et
+regtons.et
+101domain.et
+ovh.et

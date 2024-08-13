@@ -1,0 +1,10 @@
+README.md
+setup.py
+word_forms/__init__.py
+word_forms/constants.py
+word_forms/word_forms.py
+word_forms.egg-info/PKG-INFO
+word_forms.egg-info/SOURCES.txt
+word_forms.egg-info/dependency_links.txt
+word_forms.egg-info/requires.txt
+word_forms.egg-info/top_level.txt

@@ -1,0 +1,6 @@
+markmonitor.sm
+domaininfo.sm
+godaddy.sm
+101domain.sm
+comlaude.sm
+marcaria.sm

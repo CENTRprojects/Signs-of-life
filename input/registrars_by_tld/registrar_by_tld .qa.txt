@@ -1,0 +1,17 @@
+domeny.qa
+united-domains.qa
+101domain.qa
+godaddy.qa
+meshdigital.qa
+markmonitor.qa
+epag.qa
+cloudflare.qa
+domainmonster.qa
+home.qa
+direct.qa
+page.qa
+marcaria.qa
+101domain.com.qa
+akamai.qa
+orange-business.qa
+agip.qa

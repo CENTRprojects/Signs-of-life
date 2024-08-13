@@ -1,0 +1,15 @@
+marcaria.pm
+domainbox.pm
+area.pm
+epag.pm
+safebrands.pm
+reg.pm
+one.pm
+cronon.pm
+orange-business.pm
+gandi.pm
+ovh.pm
+planethoster.pm
+neo.pm
+ttc.pm
+comlaude.pm

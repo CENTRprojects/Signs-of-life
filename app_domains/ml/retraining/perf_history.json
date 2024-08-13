@@ -1,0 +1,44 @@
+[
+   {
+      "Accuracy": 0.902,
+      "n_samples": 2065,
+      "ref_time": "20200625-165313",
+      "Accuracy_CCTLD": 0.902,
+      "Accuracy_GTLD": 0.902
+   },
+   {
+      "Accuracy": 0.9090307641415812,
+      "n_samples": 3023,
+      "ref_time": "20221007-192324",
+      "Accuracy_CCTLD": 0.9432152279192854,
+      "Accuracy_GTLD": 0.9636095368838902
+   },
+   {
+      "Accuracy": 0.9090307641415812,
+      "n_samples": 3023,
+      "ref_time": "20221116-085421",
+      "Accuracy_CCTLD": 0.9432152279192854,
+      "Accuracy_GTLD": 0.9636095368838902
+   },
+   {
+      "Accuracy": 0.8991486574983628,
+      "n_samples": 3054,
+      "ref_time": "20221116-122704",
+      "Accuracy_CCTLD": 0.937681248199083,
+      "Accuracy_GTLD": 0.9605460838244925
+   },
+   {
+      "Accuracy": 0.8991486574983628,
+      "n_samples": 3054,
+      "ref_time": "20231116-090504",
+      "Accuracy_CCTLD": 0.937681248199083,
+      "Accuracy_GTLD": 0.9605460838244925
+   },
+   {
+      "Accuracy": 0.9028160067753547,
+      "n_samples": 4723,
+      "ref_time": "20240111-084743",
+      "Accuracy_CCTLD": 0.9397349637941985,
+      "Accuracy_GTLD": 0.96168296210036
+   }
+]

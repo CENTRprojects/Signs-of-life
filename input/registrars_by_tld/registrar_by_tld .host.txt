@@ -1,0 +1,7 @@
+encode.host
+clouds365.host
+smallbusiness.host
+relcom.host
+stratagem.host
+mindo.host
+qiq.host

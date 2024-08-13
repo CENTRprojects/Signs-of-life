@@ -1,0 +1,5 @@
+domeny.mt
+nominate.mt
+godaddy.mt
+ccc.mt
+onlydomains.mt

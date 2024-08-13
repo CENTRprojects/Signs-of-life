@@ -1,0 +1,2 @@
+domainname.shop
+domene.shop

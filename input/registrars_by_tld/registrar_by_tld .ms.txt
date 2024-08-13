@@ -1,0 +1,12 @@
+networksolutions.ms
+101domain.ms
+domaininfo.ms
+godaddy.ms
+eurodns.ms
+crazydomains.ms
+name.ms
+united-domains.ms
+enom.ms
+key-systems.ms
+ovh.ms
+cal.ms

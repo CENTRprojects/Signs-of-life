@@ -1,0 +1,153 @@
+Versions:
+
+version 2.27.1: 26/05/2024
+- Added ssl_enabled in the docs
+
+version 2.27: 29/04/2024
+- Added detection of GoDaddy's lander page (from High Content to Parking Registrar)
+
+
+version 2.26: 23/04/2024
+- Added DEBUG_PRINT parameter in config for production debugging (set to True for URL level time monitoring)
+
+version 2.25: 12/02/2024
+- Comment of scripts and functions of the whole crawler + some functions renaming
+- Updated the ML model with a retraining on Labtool samples at date 11/01/24
+
+
+version 2.24: 12/01/2024
+- Identification of Security/Optimization/Technologies/Services elements through Headers/Cookies/ Javascript analysis
+	This option may be disabled by setting  DO_HCJ_EXTRACTION to  False (in config.py)
+- code clean-up: obsolete commented code removal,refactored unit_predict_park
+- removed non-debug output file
+- removed labtool requests (with the credentials in it) and removed pseudorandom number generators use  [=important notes of the code review]
+- miscellaneous  functions renaming for clarity (url_visitors in particular)
+- unused import removal, additional functions commenting
+
+
+version 2.23: 06/06/2023
+- Convert all foreign letters into IDNA format
+
+
+version 2.22: 16/11/2022
+- Added non-2XX status codes to domains categorised as "errors"
+- Corrected "Error with pickle" error
+
+
+version 2.21: 16/11/2022
+- Added ML retraining script with multi-class classification approach
+
+
+version 2.20: 25/10/2022
+- Added ML retraining script with binary classification approach
+
+
+
+version 2.19: 01/08/2021
+- Added ssl_enabled
+- Added Chrome update fixes
+
+
+version 2.18: 15/06/2021
+- Added configurable user-agent to config.py (can be overwritten in .env)
+
+version 2.17: 08/02/2021
+- Corrected bug of 2.16 for the case of long unformatted HTML
+
+version 2.16: 22/01/2021
+- Added extra control for pages that are too long (resulting from infinite loops in server side)
+
+version 2.15: 24/11/2020
+- added CSV_OUTPUT_DELIMITER as config option
+
+version 2.14: 19/11/2020
+- Added extra format controls and conversions a subset of columns ("ml_feat_XXX")
+
+version 2.13: 27/09/2020
+- correction of of social media name extraction: extra exclusions added
+
+
+version 2.12: 24/08/2020
+- correction of social media name extraction (ex: removing "^M", "<br>", ...)
+
+version 2.11: 13/08/2020 (following manual labelling of June 2020)
+- To better filter registrar page from false positive registrar page, the ML prediction is now also integrated
+- The order of priority between parking notice is now: SALE>STARTER>EXPIRED>BLOCKED>RESERVED
+- A page is empty if it has less than 5 UNIQUE words
+- For a empty page that is classified parked by the ML as "Parking Notice Individual Content" is now classified as Blank Page.
+- list of registrars updated
+
+version 2.10: 12/08/2020
+Minor changes / corrections:
+- Adding parameters to launch Content classification, social media extraction and mail extraction independently
+- correction of a bug when a redirection target page is an Error page
+- correction of noisy linkedin links
+
+version 2.9: 10/06/2020
+- mail record extraction added to the main pipeline
+
+version 2.8: 20/05/2020
+- Removed timeout on tasks
+- Connection keep alive reduction
+
+version 2.7: 14/05/2020
+-Classification: A redirection to a page classified as error is now classified as error
+-Request: Connection problems (when a DNS address is found) are included in category "Refused Conection" instead of No Status Code
+-Redirection identification: adaptation to variability of cased and uncased link attributes
+-Index_of bug correction
+-Parking Note Registrar now prevails over Parking Individual Content
+-Some noisy/trivial translations have been removed from the taxonomy
+-Correction of some labelling error in the training dataset
+
+version 2.6: 11/05/2020
+- Removed Java dependant library (konlpy) and replaced it with soynlp
+- Added memory sharing for parallelisation
+- Forced prediction of ML model into one process
+- Adjusted the file chunking (preprocessing) for input files with more than just the "url" column
+
+
+version 2.5: 07/05/2020
+- Integration of Social Media and Parking into one pipeline
+- Bug correction of word tokenization: filtering out non-significant text before tokenization
+- Added Try catch for potential encoding issues when a language is not correctly identified (the standard tokenizer is used instead)
+- inltk: direct use of tokenizer builder class
+- Simplification of language tokenizers imports (outside of parallel loop)
+- Category name typo correction
+- language codes alignment for ml
+
+
+version 2.4: 29/04/2020
+- Bug correction with ML prediction (sparsity)
+- Some words removed from taxonomy
+
+version 2.3: 27/04/2020
+- Manual labelling of additional 650 (carefully selected) domains
+- ML model retrained on the additional data and pushed --> more robust results
+- Minor corrections in feature engineering pipelines
+
+version 2.2:  24/04/2020
+- Mail server detection added
+- Social Media extraction added. Official pages of 6 social media + social media tags (schema + OG + twitter cards)
+- Text Classification:  - taxonomy refined with a filtering of leading and trailing stopwords (that are added by Google Translate during translation step)
+			- multi-words are now detected and used in features ( hello world --> hello_world, lorem ipsum...)
+- Update of libraries versions after a migration to Linux + Python 3.7 to match development and production environments
+- Changes in Request engine: use of uvloop library to handle asynchronous  loops (this library is only available on Linux)
+
+--------------------
+version 2.1  
+- text classification: 1 - The displayed text is split into sentences then words according to the language. It is using 9 sentence tokenizers and 19 word tokenizers.
+		       2 - feature engineering step added: Text size,count core and attribute pairs in same/successive sentences   
+
+--------------------
+version 2.0
+- parking classification reuse the same pipeline as version 1.0 except for the Text classification.
+- A trained ensemble model (XGBoost) is used for parking classification when some displayed text is available. It is based on a 
+manual labelling of 2000 urls
+- The final classification categories (Category and SubCategory) have been replaced by a 4-level classes (category_lv1 to category_lv4, cf doc.)
+
+
+--------------------
+version 1.0
+- rule-based parking classification using a list patterns: core keyword (ex: domain, website..) + attribute (ex: sale, expired,...). For the detailed list of patterns, please refer to language_patterns.py .
+- In case of redirection, the target page (up to 1 redirection) is used for classification
+- When a javascript required note is found, the page is visited with a Chrome webdriver

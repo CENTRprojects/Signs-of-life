@@ -1,0 +1,4 @@
+power.ax
+nominate.ax
+123domain.ax
+ccc.ax

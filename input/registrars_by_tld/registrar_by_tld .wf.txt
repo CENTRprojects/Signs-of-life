@@ -1,0 +1,11 @@
+safebrands.wf
+box.wf
+marcaria.wf
+gandi.wf
+home.wf
+ovh.wf
+cronon.wf
+comlaude.wf
+orange-business.wf
+planethoster.wf
+101domain.wf

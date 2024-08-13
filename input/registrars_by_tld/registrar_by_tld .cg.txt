@@ -1,0 +1,4 @@
+agip.cg
+godaddy.cg
+markmonitor.cg
+nominalia.cg

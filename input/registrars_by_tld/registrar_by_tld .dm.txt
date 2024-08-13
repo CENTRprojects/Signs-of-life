@@ -1,0 +1,5 @@
+eurodns.dm
+crazydomains.dm
+godaddy.dm
+101domain.dm
+united-domains.dm

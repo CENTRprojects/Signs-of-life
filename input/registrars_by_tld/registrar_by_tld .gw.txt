@@ -1,0 +1,6 @@
+marcaria.gw
+netim.gw
+markmonitor.gw
+safebrands.gw
+101domain.gw
+lexsynergy.gw

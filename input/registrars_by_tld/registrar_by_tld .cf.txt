@@ -1,0 +1,8 @@
+101domain.cf
+akamai.cf
+ports.cf
+nancy.cf
+netim.cf
+dotroll.cf
+nominate.cf
+rolr.cf

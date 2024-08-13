@@ -1,0 +1,3 @@
+power.ky
+uniregistry.ky
+home.ky
