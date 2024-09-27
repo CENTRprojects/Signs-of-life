@@ -13,3 +13,4 @@ screenlog*
 output/*
 .docker/docker_volumes
 .docker-compose.env
+input/touch
