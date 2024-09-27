@@ -1,0 +1,56 @@
+lgg,sentence_tokenizer,word_tokenizer,lgg_full,stop_words
+af,std,std,Afrikaans,af
+ar,std,ar,Arabic,ar
+bg,std,std,Bulgarian,bg
+bn,bn,bn,Bengali,bn
+ca,std,std,"Catalan, Valencian",ca
+cs,std,std,Czech,cs
+cy,std,std,Welsh,en
+da,std,std,Danish,da
+de,std,std,German,de
+el,std,std,"Greek, Modern (1453-)",el
+en,std,std,English,en
+es,std,std,"Spanish, Castilian",es
+et,std,std,Estonian,et
+fa,std,std,Persian,fa
+fi,std,std,Finnish,fi
+fr,std,std,French,fr
+gu,std,gu,Gujarati,
+he,std,he,Hebrew,he
+hi,hi,hi,Hindi,hi
+hr,std,std,Croatian,hr
+hu,std,std,Hungarian,hu
+id,std,std,Indonesian,id
+it,std,std,Italian,it
+ja,std,ja,Japanese,ja
+kn,std,kn,Kannada,
+ko,std,ko,Korean,ko
+lt,std,std,Lithuanian,
+lv,std,std,Latvian,lv
+mk,std,std,Macedonian,
+ml,std,ml,Malayalam,
+mr,mr,mr,Marathi,mr
+ne,std,ne,Nepali,
+nl,std,std,"Dutch, Flemish",nl
+no,std,std,Norwegian,no
+pa,std,pa,"Punjabi, Panjabi",
+pl,std,std,Polish,pl
+pt,std,std,Portuguese,pt
+ro,std,std,"Romanian, Moldavian, Moldovan",ro
+ru,std,std,Russian,ru
+sk,std,std,Slovak,sk
+sl,std,std,Slovenian,sl
+so,std,std,Somali,so
+sq,std,std,Albanian,
+sv,std,std,Swedish,sv
+sw,std,std,Swahili,sw
+ta,std,ta,Tamil,
+te,te,std,Telugu,
+th,th,th,Thai,th
+tl,std,std,Tagalog,
+tr,std,std,Turkish,tr
+uk,std,std,Ukrainian,uk
+ur,std,ur,Urdu,ur
+vi,vi,vi,Vietnamese,vi
+zh-cn,std,chn,Chinese,zh
+zh-tw,std,chn,Chinese,zh
