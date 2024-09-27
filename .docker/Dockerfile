@@ -21,7 +21,7 @@ RUN apt install -y libpq-dev wget htop tmux xdg-utils build-essential git vim &&
 #     dpkg -i --force-all google-chrome-stable_current_amd64.deb && \
 #     apt -f -y install
 
-ARG CHROME_VERSION="115.0.5790.110-1"
+ARG CHROME_VERSION="128.0.6613.113-1"
 RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
   && apt install -y /tmp/chrome.deb \
   && rm /tmp/chrome.deb
@@ -36,11 +36,11 @@ RUN cd /tmp && \
     cp ./chromedriver-linux64/chromedriver /usr/bin/chromedriver
 
 # Install pip && dependencies
-RUN python -m pip install -U pip && \
-    pip install -r requirements_before_torch.txt && \
-    pip install torch==1.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html && \
-    pip install -r requirements_after_torch.txt && \
-    pip install -r requirements_final.txt
+RUN python -m pip install -U pip
+RUN pip --timeout 10000 install -r requirements_before_torch.txt
+RUN pip --timeout 10000 install torch==1.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip --timeout 10000 install -r requirements_after_torch.txt
+RUN pip --timeout 10000 install -r requirements_final.txt
 
 # word_forms setup
 COPY env_required/word_forms-master/ /signs-of-life/env_required/word_forms-master/
