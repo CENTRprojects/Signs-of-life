@@ -836,6 +836,14 @@ def get_sample_filenames(url):
     cleaned_url = clean_url(url)
     date_str = datetime.now().strftime(
         "%Y-%m-%d")  # this will crash if called twice and the clock ticks over past midnight - html and ss are written in different steps, after some time related to the batch size.
+    # assure samples directory exists
+    try:
+        Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]).mkdir(parents=True, exist_ok=False)
+        if (RUN_CONFIG["DEBUG_PRINT"]):
+            print(f'Sample output directory created {RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]}')
+    except FileExistsError:
+        pass
+
     ss_filename = Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]).joinpath(
         Path(f"{cleaned_url}.ss.{date_str}.png")).relative_to(Path(RUN_CONFIG["MAIN_DIR"]))
     raw_filename = Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]).joinpath(
