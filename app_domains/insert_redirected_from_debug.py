@@ -52,6 +52,8 @@ def ConnectDB():
             executeSQLFromFile(sqlfile)
             sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_5.sql")
             executeSQLFromFile(sqlfile)
+            sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_6.sql")
+            executeSQLFromFile(sqlfile)
             cur.execute("select * from signs_of_life_crawler limit 1")
         q = cur.fetchall()
         cur.close()
