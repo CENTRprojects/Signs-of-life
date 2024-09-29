@@ -756,8 +756,12 @@ def single_url_browser_visit(link, webdriver):
 
     try:
         html = webdriver.execute_script("return document.documentElement.innerHTML")
+        if RUN_CONFIG["DEBUG_PRINT"]:
+            print(f".... innerHTML read {full_url}")
         resu.is_error = False
     except Exception as e:
+        if RUN_CONFIG["DEBUG_PRINT"]:
+            print(f".... innerHTML crawling error {full_url} : {e}")
         html = f"JS CRAWLING ERROR: {e}"
         resu.is_error = True
 
@@ -859,6 +863,8 @@ def get_sample_filenames(url):
 def single_url_browser_load_visit(link):
     """Visit one url with Chrome webdriver"""
     try:
+        if RUN_CONFIG["DEBUG_PRINT"]:
+            print(f"----> START single_url_browser_load_visit {link['url']} <-------")
         webdriver = initiate_browser_driver()
         resu = single_url_browser_visit(link, webdriver)
 
@@ -918,12 +924,8 @@ def single_url_browser_load_visit(link):
         print("JS error with {} of type: {} : {} --> js interpretation removed".format(link["url"], type(e), str(e)))
         # raise
         resu = None
-        try:
-            webdriver.quit()  # force close
-        except:
-            print("INFO: failed to close driver")
-            pass
-
+    if RUN_CONFIG["DEBUG_PRINT"]:
+        print(f"----> END single_url_browser_load_visit {link['url']}. Got result: {resu is not None} <-------")
     return resu
 
 
