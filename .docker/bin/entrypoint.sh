@@ -22,13 +22,31 @@ crawl_dir () {
             mkdir -p $input_folder
             mkdir -p $input_folder/${CONTAINER_NAME}
             mv "$file" $input_folder/${CONTAINER_NAME}
-            python app_domains/main_domains.py -container_name="${CONTAINER_NAME}"
+            python -u app_domains/main_domains.py -container_name="${CONTAINER_NAME}"
             mkdir -p done
             mv "$input_folder/${CONTAINER_NAME}/$BASENAME" done/
             rm  $input_folder/${CONTAINER_NAME}/$BASENAME.chunk*
         else
             echo -e "* ${RED}no URL found in file [${file}] - skipping.${NC}"
         fi
+    done
+    for file in $input_folder/$CONTAINER_NAME/*.csv
+    do
+        BASENAME=$(basename "$file")
+        case "$BASENAME" in
+            *chunk*) 
+                ;;  # Do nothing if "chunk" is found
+            "*.csv")
+                ;;  # Do nothing if no file was found
+            *)
+                # Execute if a non-chunk is not found
+                echo "${GREEN}File found in processing $BASENAME - Crawling. ${NC}"
+                python -u app_domains/main_domains.py -container_name="${CONTAINER_NAME}"
+                mkdir -p done
+                mv "$input_folder/${CONTAINER_NAME}/$BASENAME" done/
+                rm  $input_folder/${CONTAINER_NAME}/$BASENAME.chunk*
+                ;;  
+        esac
     done
     echo -e "\n\n*****************\n\n"
 }
