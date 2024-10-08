@@ -242,6 +242,8 @@ def final_formatting(df, final_file_path):
     sep = RUN_CONFIG['CSV_OUTPUT_DELIMITER']
     plog.it(f'Saving CSV output to {final_file_path} using delimiter "{sep}"')
     df.to_csv(final_file_path[0:-4] + ".csv", sep=sep, encoding="utf-8-sig", index=False)
+    # Original
+    # df.to_csv(final_file_path[0:-4] + "_DEBUG.csv", sep=sep, encoding="utf-8-sig", index=False)
 
     plog.perf_end(f"Completed Final Formatting on {df}, {final_file_path}")
 

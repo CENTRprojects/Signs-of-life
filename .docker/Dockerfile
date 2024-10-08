@@ -21,11 +21,6 @@ RUN apt install -y libpq-dev wget htop tmux xdg-utils build-essential git vim &&
 #     dpkg -i --force-all google-chrome-stable_current_amd64.deb && \
 #     apt -f -y install
 
-# ARG CHROME_VERSION="128.0.6613.113-1"
-# RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
-#   && apt install -y /tmp/chrome.deb \
-#   && rm /tmp/chrome.deb
-
 # Install actual chrome version (after https://linuxcapable.com/install-google-chrome-on-ubuntu-linux/)
 RUN curl -fSsL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor | tee /usr/share/keyrings/google-chrome.gpg > /dev/null && \
     echo deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main | tee /etc/apt/sources.list.d/google-chrome.list && \
