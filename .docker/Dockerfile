@@ -21,12 +21,16 @@ RUN apt install -y libpq-dev wget htop tmux xdg-utils build-essential git vim &&
 #     dpkg -i --force-all google-chrome-stable_current_amd64.deb && \
 #     apt -f -y install
 
-ARG CHROME_VERSION="115.0.5790.110-1"
-RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
-  && apt install -y /tmp/chrome.deb \
-  && rm /tmp/chrome.deb
+# ARG CHROME_VERSION="128.0.6613.113-1"
+# RUN wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
+#   && apt install -y /tmp/chrome.deb \
+#   && rm /tmp/chrome.deb
 
-
+# Install actual chrome version (after https://linuxcapable.com/install-google-chrome-on-ubuntu-linux/)
+RUN curl -fSsL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor | tee /usr/share/keyrings/google-chrome.gpg > /dev/null && \
+    echo deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main | tee /etc/apt/sources.list.d/google-chrome.list && \
+    apt update -y && \
+    apt install -y google-chrome-stable
 
 # Install ChromeDriver
 RUN cd /tmp && \
@@ -36,16 +40,19 @@ RUN cd /tmp && \
     cp ./chromedriver-linux64/chromedriver /usr/bin/chromedriver
 
 # Install pip && dependencies
-RUN python -m pip install -U pip && \
-    pip install -r requirements_before_torch.txt && \
-    pip install torch==1.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html && \
-    pip install -r requirements_after_torch.txt && \
-    pip install -r requirements_final.txt
+RUN python -m pip install -U pip
+RUN pip --timeout 10000 install -r requirements_before_torch.txt
+RUN pip --timeout 10000 install torch==1.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip --timeout 10000 install -r requirements_after_torch.txt
+RUN pip --timeout 10000 install -r requirements_final.txt
 
 # word_forms setup
 COPY env_required/word_forms-master/ /signs-of-life/env_required/word_forms-master/
 
 RUN cd env_required/word_forms-master/ && python setup.py install
+
+COPY .docker/setup_tok_models.py /signs-of-life/setup_tok_models.py
+RUN python -u /signs-of-life/setup_tok_models.py
 
 #ENTRYPOINT ["tail", "-f", "/dev/null"]
 CMD ["sh", "entrypoint.sh"]

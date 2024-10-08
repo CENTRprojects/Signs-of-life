@@ -756,8 +756,12 @@ def single_url_browser_visit(link, webdriver):
 
     try:
         html = webdriver.execute_script("return document.documentElement.innerHTML")
+        if RUN_CONFIG["DEBUG_PRINT"]:
+            print(f".... innerHTML read {full_url}")
         resu.is_error = False
     except Exception as e:
+        if RUN_CONFIG["DEBUG_PRINT"]:
+            print(f".... innerHTML crawling error {full_url} : {e}")
         html = f"JS CRAWLING ERROR: {e}"
         resu.is_error = True
 
@@ -836,6 +840,14 @@ def get_sample_filenames(url):
     cleaned_url = clean_url(url)
     date_str = datetime.now().strftime(
         "%Y-%m-%d")  # this will crash if called twice and the clock ticks over past midnight - html and ss are written in different steps, after some time related to the batch size.
+    # assure samples directory exists
+    try:
+        Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]).mkdir(parents=True, exist_ok=False)
+        if (RUN_CONFIG["DEBUG_PRINT"]):
+            print(f'Sample output directory created {RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]}')
+    except FileExistsError:
+        pass
+
     ss_filename = Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]).joinpath(
         Path(f"{cleaned_url}.ss.{date_str}.png")).relative_to(Path(RUN_CONFIG["MAIN_DIR"]))
     raw_filename = Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]).joinpath(
@@ -851,6 +863,8 @@ def get_sample_filenames(url):
 def single_url_browser_load_visit(link):
     """Visit one url with Chrome webdriver"""
     try:
+        if RUN_CONFIG["DEBUG_PRINT"]:
+            print(f"----> START single_url_browser_load_visit {link['url']} <-------")
         webdriver = initiate_browser_driver()
         resu = single_url_browser_visit(link, webdriver)
 
@@ -910,12 +924,8 @@ def single_url_browser_load_visit(link):
         print("JS error with {} of type: {} : {} --> js interpretation removed".format(link["url"], type(e), str(e)))
         # raise
         resu = None
-        try:
-            webdriver.quit()  # force close
-        except:
-            print("INFO: failed to close driver")
-            pass
-
+    if RUN_CONFIG["DEBUG_PRINT"]:
+        print(f"----> END single_url_browser_load_visit {link['url']}. Got result: {resu is not None} <-------")
     return resu
 
 

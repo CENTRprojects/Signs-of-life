@@ -71,6 +71,15 @@ def ConnectDB():
 			sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_5.sql")
 			executeSQLFromFile(sqlfile)
 			cur.execute("select to_sample from signs_of_life_crawler limit 1")
+		try:
+			# check the fx_hcj__* fields have been added to the db
+			cur.execute("select fx_hcj__secu_xss from signs_of_life_crawler limit 1")
+		except (Exception, pg.ProgrammingError) as error:
+			plog.it(f"Error connecting to table: {error}", is_error=True)
+			db.rollback()
+			sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_6.sql")
+			executeSQLFromFile(sqlfile)
+			cur.execute("select to_sample from signs_of_life_crawler limit 1")
 		q = cur.fetchall()
 		cur.close()
 		print("DB Connection successful.")

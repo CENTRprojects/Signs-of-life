@@ -1,4 +1,4 @@
-alter table signs_of_life_crawler
+alter table signs_of_life_crawler 
 add column flag_park varchar,
 add column flag_js varchar,
 add column pred_has_ads varchar,

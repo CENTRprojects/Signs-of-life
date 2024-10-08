@@ -1,0 +1,12 @@
+form,root,to_derive,to_translate,word,context,word_type,end_class
+n,hello,no,no,hello,,other,other
+n,world,no,no,world,,other,other
+n,hello_world,no,no,hello_world,,other,starter
+n,x_url,no,no,x_url,,core,other
+n,wordpress,no,no,wordpress,,other,starter
+n,wix,no,no,wix,,other,starter
+n,microsoft,no,no,microsoft,,other,starter
+n,lorem_ipsum,no,no,lorem_ipsum,,other,starter
+n,index_of,no,no,index_of,,other,index_of
+n,index,no,no,index,,other,other
+n,no_website,no,no,no_website,,other,other

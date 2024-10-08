@@ -66,7 +66,10 @@ def remove_url_saved(path_url_save):
     list_urls = os.listdir(path_url_save)
     for f in list_urls:
         if "doorstopper" not in f:
-            os.remove(join(path_url_save, f))
+            try:
+                os.remove(join(path_url_save, f))
+            except FileNotFoundError as e:
+                print(f"remove_url_saved: File not found {f}")
 
 
 def clean_link(lk):

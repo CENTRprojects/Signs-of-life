@@ -1,9 +1,11 @@
 services:
   crawler:
+    platform: linux/amd64
     build:
       context: ../
       dockerfile: ./.docker/Dockerfile
     volumes:
+      - ../web/signs-of-life/:/signs-of-life
       - ../app_domains:/signs-of-life/app_domains
       - ../input:/signs-of-life/input
       - ../logging:/signs-of-life/logging
@@ -15,7 +17,6 @@ services:
       - ./data:/signs-of-life/data
       - ./bin/entrypoint.sh:/signs-of-life/entrypoint.sh
       - .env:/signs-of-life/.env
-      - /web/signs-of-life/:/signs-of-life
     env_file:
       - .env
     deploy:
