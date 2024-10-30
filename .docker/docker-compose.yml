@@ -1,6 +1,6 @@
 services:
   crawler:
-    platform: linux/amd64
+#    platform: linux/amd64
     build:
       context: ../
       dockerfile: ./.docker/Dockerfile
@@ -9,13 +9,23 @@ services:
       # - ../web/signs-of-life/:/signs-of-life
       - ../app_domains:/signs-of-life/app_domains
       - ../input:/signs-of-life/input
-      - ../logging:/signs-of-life/logging
-      - ../output:/signs-of-life/output
-      - ../inter:/signs-of-life/inter
-      - ../processing:/signs-of-life/processing
-      - ../completed:/signs-of-life/completed
-      - ../done:/signs-of-life/done
-      - ./data:/signs-of-life/data
+      - ./docker_volumes/crawler/logging:/signs-of-life/logging
+      # - ../logging:/signs-of-life/logging
+      - ./docker_volumes/crawler/output:/signs-of-life/output
+      # - ../output:/signs-of-life/output
+      - ./docker_volumes/crawler/inter:/signs-of-life/inter
+      - ./docker_volumes/crawler/inter/urls:/signs-of-life/inter/urls
+      - ./docker_volumes/crawler/inter/revisit:/signs-of-life/inter/revisit
+      # - ../inter:/signs-of-life/inter
+      - ./docker_volumes/crawler/processing:/signs-of-life/processing
+      # - ../processing:/signs-of-life/processing
+      - ./docker_volumes/crawler/completed:/signs-of-life/completed
+      # - ../completed:/signs-of-life/completed
+      - ./docker_volumes/crawler/done:/signs-of-life/done
+      # - ../done:/signs-of-life/done
+      - ./docker_volumes/crawler/data:/signs-of-life/data
+      # - ./data:/signs-of-life/data
+      #
       - ./bin/entrypoint.sh:/signs-of-life/entrypoint.sh
       - .env:/signs-of-life/.env
     env_file:
@@ -24,13 +34,14 @@ services:
       replicas: 2 
     depends_on:
       - dbpostgres
+    restart: unless-stopped
       
   dbpostgres:
     image: postgres:15.2
     environment:
         POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
         POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-        POSTGRES_DB: "signs_of_life"
+        POSTGRES_DB: "signs_of_life_crawler"
     expose:
         - "${POSTGRES_PORT}:5432"
     ports:
@@ -38,3 +49,36 @@ services:
     volumes:
         - ./docker_volumes/postgresdb/data:/var/lib/postgresql/data
         - ./main-db/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+# Todo- Optional - grafana visualisation with the postgress db
+  # grafana-app:
+  grafana:
+    image: grafana/grafana-oss
+    user: "0"
+    environment:
+     GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      #        GF_RENDERING_CALLBACK_URL: http://10.126.73.100:3000/
+      #        GF_LOG_FILTERS: rendering:debug
+          #    expose:
+          #        - "${POSTGRES_PORT}:5432"
+    env_file:
+     - ./conf/grafana/grafana_env
+    ports:
+        - "3000:3000"
+    volumes:
+        - /etc/localtime:/etc/localtime:ro
+        - /etc/timezone:/etc/timezone:ro
+        - ./docker_volumes/grafana/grafana_lib:/var/lib/grafana
+        - ./docker_volumes/grafana/grafana_plugins:/var/lib/grafana/plugins
+        - ./conf/grafana/grafana.ini:/etc/grafana/grafana.ini
+    restart: unless-stopped
+  # grafana-renderer:
+  renderer:
+    image: grafana/grafana-image-renderer:latest
+    ports:
+        - "8081:8081"
+    restart: unless-stopped
+# Todo- NS Resolver for the crawler
+  # resolver:
+# Todo- Optional - elastic visualisation with the postgress db
+  # elk:

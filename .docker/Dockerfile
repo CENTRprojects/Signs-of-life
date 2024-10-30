@@ -2,13 +2,6 @@ FROM python:3.7.17-bullseye
 
 WORKDIR /signs-of-life
 
-COPY req_april2020.txt /signs-of-life/
-COPY requirements_after_torch.txt /signs-of-life/
-COPY requirements_before_torch.txt /signs-of-life/
-COPY requirements_final.txt /signs-of-life/
-
-
-
 RUN apt-get update
 
 # Install postgreSQL, C++ Build Tools & other requried packages
@@ -36,9 +29,17 @@ RUN cd /tmp && \
 
 # Install pip && dependencies
 RUN python -m pip install -U pip
+
+# COPY req_april2020.txt /signs-of-life/
+COPY requirements_before_torch.txt /signs-of-life/
 RUN pip --timeout 10000 install -r requirements_before_torch.txt
+
 RUN pip --timeout 10000 install torch==1.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+
+COPY requirements_after_torch.txt /signs-of-life/
 RUN pip --timeout 10000 install -r requirements_after_torch.txt
+
+COPY requirements_final.txt /signs-of-life/
 RUN pip --timeout 10000 install -r requirements_final.txt
 
 # word_forms setup
