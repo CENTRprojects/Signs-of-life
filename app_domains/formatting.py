@@ -22,7 +22,12 @@ DEBUG_COLUMNS = ["input_url", "final_url", "tld", "category_lv1","category_lv2",
                  "has_facebook", "has_twitter", "has_linkedin", "has_reddit", "has_instagram", "has_github",
                  "feat_fb_lks", "feat_tw_lks", "feat_lk_lks", "feat_rd_lks", "feat_ig_lks", "feat_gh_lks",
                  "has_open_graph", "has_twitter_card", "has_schema_tag","has_mx_record", "MXRecord", "has_own_mx_record",
-                 "to_sample", "ss_filename", "raw_filename", "clean_filename", "json_filename"
+                 "to_sample", "ss_filename", "raw_filename", "clean_filename", "json_filename",
+                 "dns_has_RRSIG", "dns_value_RRSIG", "dns_RRSIG_comment", "dns_has_A", "dns_value_A", "dns_A_comment", "dns_has_NS", "dns_value_NS", 
+                 "dns_NS_comment", "dns_has_TXT", "dns_value_TXT", "dns_TXT_comment", "dns_has_AAAA", "dns_value_AAAA", "dns_AAAA_comment", 
+                 "dns_has_SOA", "dns_value_SOA", "dns_SOA_comment", "dns_has_CAA", "dns_value_CAA", "dns_CAA_comment", "dns_has_CNAME", 
+                 "dns_value_CNAME", "dns_CNAME_comment", "dns_has_dmarc", "dns_value_dmarc", "dns_dmarc_comment",
+                 "dns_has_DKIM", "dns_value_DKIM", "dns_DKIM_comment"
                  ]
 
 TABLEAU_COLUMNS = ["input_url", "final_url", "tld", "category_lv1","category_lv2","category_lv3","category_lv4",
@@ -35,7 +40,12 @@ TABLEAU_COLUMNS = ["input_url", "final_url", "tld", "category_lv1","category_lv2
                    "fx_hcj__opti_etag", "fx_hcj__opti_parkingPage", "fx_hcj__techno_ASP", "fx_hcj__techno_PHP",
                    "fx_hcj__techno_AWS", "fx_hcj__techno_Java", "fx_hcj__techno_Jquery", "fx_hcj__techno_React",
                    "fx_hcj__techno_Angular", "fx_hcj__service_adblock", "fx_hcj__service_wix", "fx_hcj__service_shopify",
-                   "fx_hcj__service_shop", "fx_hcj__service_sucuri", "fx_hcj__service_googleAds"
+                   "fx_hcj__service_shop", "fx_hcj__service_sucuri", "fx_hcj__service_googleAds",
+                   "dns_has_RRSIG", "dns_value_RRSIG", "dns_RRSIG_comment", "dns_has_A", "dns_value_A", "dns_A_comment", "dns_has_NS", "dns_value_NS", 
+                   "dns_NS_comment", "dns_has_TXT", "dns_value_TXT", "dns_TXT_comment", "dns_has_AAAA", "dns_value_AAAA", "dns_AAAA_comment", 
+                   "dns_has_SOA", "dns_value_SOA", "dns_SOA_comment", "dns_has_CAA", "dns_value_CAA", "dns_CAA_comment", "dns_has_CNAME", 
+                   "dns_value_CNAME", "dns_CNAME_comment", "dns_has_dmarc", "dns_value_dmarc", "dns_dmarc_comment",
+                   "dns_has_DKIM", "dns_value_DKIM", "dns_DKIM_comment"
                    ]
 
 DICO_NAMING_LV4 = {
@@ -233,6 +243,8 @@ def final_formatting(df, final_file_path):
     df["target_url"] = df["target_url"].str.replace("^I","")
     df["final_url"] = df["final_url"].str.replace(RUN_CONFIG['CSV_OUTPUT_DELIMITER'],"")
     df["target_url"] = df["target_url"].str.replace(RUN_CONFIG['CSV_OUTPUT_DELIMITER'],"")
+    df["final_url"] = df["final_url"].str.replace(";","")
+    df["target_url"] = df["target_url"].str.replace(";","")
 
     # reordering
     other_cols = [e for e in list(df.columns) if e not in DEBUG_COLUMNS]

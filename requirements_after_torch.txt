@@ -1,5 +1,6 @@
 # inltk==0.8.1 //fix
 underthesea==1.1.17
-numpy==1.21.6
+numpy==1.18.3
+# numpy==1.21.6  // Broken
 bottleneck==1.2.1
 inltk==0.9

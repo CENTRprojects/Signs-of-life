@@ -23,7 +23,7 @@ tinysegmenter==0.4
 cchardet==2.1.1
 tqdm==4.45.0
 xgboost==1.0.2
-dnspython==1.16.0
+dnspython==2.3.0
 python-Levenshtein==0.12.1
 tldextract==2.2.2
 soynlp==0.0.493             

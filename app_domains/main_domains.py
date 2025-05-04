@@ -17,6 +17,7 @@ import output_processing as op
 from url_visitor import FileData, interpret_boolean                     # DO_REQUESTS
 from page_processing import get_page_displayed_text, get_page_language  # DO_PAGE_PROCESSING
 from classification_parked import predict_parking                       # DO_CONTENT_CLASSIFICATION
+from DNS_data_extraction import extract_dns_data                        # DO_DNS
 from social_media_extraction import identify_social_media               # DO_SOCIAL_MEDIA
 from headers_cookies_js import analyse_headers_cookies_javascript       # DO_HCJ_EXTRACTION
 from mail_exchange import identify_mx_records_all_domains               # DO_MAIL_EXCHANGE
@@ -39,7 +40,12 @@ EXPECTED_ORDER = ["url", "ind_non_schema", "pred_is_parked", "is_error", "commen
                   "has_facebook", "has_twitter", "has_linkedin", "has_reddit", "has_instagram", "has_github",
                   "feat_fb_lks", "feat_tw_lks", "feat_lk_lks", "feat_rd_lks", "feat_ig_lks", "feat_gh_lks",
                   "has_open_graph", "has_twitter_card", "has_schema_tag", "to_sample", "ss_filename", "raw_filename",
-                  "clean_filename", "json_filename"
+                  "clean_filename", "json_filename",
+                  "dns_has_RRSIG", "dns_value_RRSIG", "dns_RRSIG_comment", "dns_has_A", "dns_value_A", "dns_A_comment", "dns_has_NS", "dns_value_NS", 
+                  "dns_NS_comment", "dns_has_TXT", "dns_value_TXT", "dns_TXT_comment", "dns_has_AAAA", "dns_value_AAAA", "dns_AAAA_comment", 
+                  "dns_has_SOA", "dns_value_SOA", "dns_SOA_comment", "dns_has_CAA", "dns_value_CAA", "dns_CAA_comment", "dns_has_CNAME", 
+                  "dns_value_CNAME", "dns_CNAME_comment", "dns_has_dmarc", "dns_value_dmarc", "dns_dmarc_comment", 
+                  "dns_has_DKIM", "dns_value_DKIM", "dns_DKIM_comment"
                   ]
 
 
@@ -106,6 +112,21 @@ class Controller:
         self.file_data.output_table = out_df
         plog.it(f"returning df_pred: {df_pred}")
         return df_pred
+
+    def collect_dns_data(self, datatype):
+        # extract dns data
+        print("extracting " + datatype)
+        plog.it(f"extracting DNS data: {datatype}")
+        df_dns_result = extract_dns_data(self.file_data.documents, datatype)
+        plog.it("creating output table")
+        out_df = self.file_data.output_table
+        plog.it("merging output table")
+
+        out_df = pd.merge(out_df, df_dns_result, on="url", how="left")
+
+        self.file_data.output_table = out_df
+        plog.it(f"returning df_dns_result: {df_dns_result}")
+        return df_dns_result
 
     def identify_social_media_activity(self):
         """ extract social medias data from all the url of the current documents"""
@@ -334,6 +355,118 @@ def main():
                                 is_error=True)
                         raise
 
+                if RUN_CONFIG["DO_DNS"]:
+                    print("{} -----DNS_DATA------------------------".format(f))
+                    if RUN_CONFIG["DO_DNS_RRSIG"]:
+                        try:
+                            print("dns RRSIG extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('RRSIG')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns RRSIG data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns RRSIG data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_A"]:
+                        try:
+                            print("dns a-record extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('A')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns a-record data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns a-record data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_NS"]:
+                        try:
+                            print("dns NS extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('NS')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns NS data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns NS data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_TXT"]:
+                        try:
+                            print("dns TXT extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('TXT')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns TXT data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns TXT data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_AAAA"]:
+                        try:
+                            print("dns AAAA-record extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('AAAA')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns AAAA-record data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns AAAA-record data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_SOA"]:
+                        try:
+                            print("dns SOA extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('SOA')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns SOA data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns SOA data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_CAA"]:
+                        try:
+                            print("dns CAA extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('CAA')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns CAA data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data CAA extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_CNAME"]:
+                        try:
+                            print("dns CNAME extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('CNAME')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns CNAME data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data CNAME extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+                    
+                    if RUN_CONFIG["DO_DNS_DMARC"]:
+                        try:
+                            print("dns dmarc extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('dmarc')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns dmarc data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data dmarc extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+                    
+                    if RUN_CONFIG["DO_DNS_DKIM"]:
+                        try:
+                            print("dns DKIM extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('DKIM')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns DKIM data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data DKIM extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
                 if RUN_CONFIG["DO_MAIL_EXCHANGE"]:
                     try:
                         print("Mail Exchange Extraction")
@@ -423,17 +556,6 @@ def main():
 
 def printAllDone():
     plog.it("-" * 64 + "\n" + "-" * 64 + "\n" + "-" * 24 + "ALL DONE" + "-" * 32 + "\n" + "-" * 64 + "\n" + "-" * 64)
-
-
-def OutputProcessing(filename=None):
-    """ OutputProcessing takes any csvs produced by this program and inserts them into the database defined in RUN_CONFIG[USE_DB] """
-    if RUN_CONFIG["USE_DB"] == True:
-        plog.it("---------------------USING DATABASE------------------------")
-        op.DoIt(filename)
-    else:
-        plog.it("---------------------NO DATABASE CONFIGURED------------------------")
-        plog.it("------------------RESULTS LEFT IN OUTPUT FOLDER--------------------")
-
 
 def get_container_name():
     container_name = ""

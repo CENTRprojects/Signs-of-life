@@ -82,6 +82,7 @@ GDADDY_LANDER = "/lander"
 SPE_SET = {}
 
 LIST_SPE_WORDS = ["sale", "blocked", "construction", "expired", "index_of", "other", "reserved", "starter"]
+PLACEHOLDERS = ['"name": "Your Organization Name",']
 
 # Machine Learning
 FT = Featurer(RUN_CONFIG) # features building
@@ -534,6 +535,7 @@ class PageParkClassifier():
         self.text_feat = None
         self.pred_ml_park = False
         self.ml_feat_special_words = {}
+        self.placeholder_found = None
 
         # Emptiness
         self.js_or_iframe_found = None
@@ -696,6 +698,15 @@ class PageParkClassifier():
         # Pattern research
         self.kw_park_notice, self.kw_parked, self.missing_language = detect_parking_pattern(html, txt, lg, url, n_words)
         plog2.it(f"parking pattern: {self.kw_park_notice} | {self.kw_parked} | {self.missing_language}")
+
+    def identify_placeholders(self):
+        """Detect placeholder strings commonly used on parked websites"""
+        if(self.registrar_found):
+            for placeholder in PLACEHOLDERS:
+                if (placeholder in self.html):
+                    self.kw_parked = True
+                    self.placeholder_found = True
+                    break
 
     def validate_registrar(self):
         """Validate if the page is a registrar by cross-checking clues"""
@@ -898,7 +909,10 @@ class PageParkClassifier():
 
                     self.identify_parking_pattern()
 
-                    self.validate_registrar()
+                    self.identify_placeholders()
+
+                    if(not self.placeholder_found):
+                        self.validate_registrar()
 
                     # parking conclusion
                     if self.registrar_found or self.kw_parked or self.pred_is_empty or self.pred_ml_park:
@@ -1070,7 +1084,7 @@ def predict_parking(documents):
     # Revisit with Browser and classification
     if ("DO_JS_INTERPRETATION" in RUN_CONFIG) and RUN_CONFIG["DO_JS_INTERPRETATION"]:
         plog.it("performing JS interpretation")
-        links_to_revisit_with_js = [e for e in preds if (e["to_revisit_with_js"] or e["to_sample"])]
+        links_to_revisit_with_js = [e for e in preds if (e["to_revisit_with_js"] and e["to_sample"])]
 
         if len(links_to_revisit_with_js) > 0:
             print("-------Javascript interpretation for {} urls".format(len(links_to_revisit_with_js)))
