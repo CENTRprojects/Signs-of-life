@@ -2,7 +2,7 @@ app_domains/__pycache__
 .vscode/*
 env/*
 .env
-!.env.example
+.env.example
 *.csv
 *.pyc
 inter/*.json
