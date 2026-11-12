@@ -15,8 +15,8 @@ import json
 from multiprocessing.dummy import Pool as ThreadPool
 # performance logger
 from utils import PerformanceLogger
-plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"],"logging"), filename="db_perf.log", enable_logging = RUN_CONFIG['PERFORMANCE_LOGGING'])
-sam_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"],"logging"), filename="sam_p.log", enable_logging = RUN_CONFIG['PERFORMANCE_LOGGING'])
+plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"],"logging"), filename=f"db_perf_{RUN_CONFIG['CONTAINER_ID']}.log", enable_logging = RUN_CONFIG['PERFORMANCE_LOGGING'])
+sam_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"],"logging"), filename=f"sam_p_{RUN_CONFIG['CONTAINER_ID']}.log", enable_logging = RUN_CONFIG['PERFORMANCE_LOGGING'])
 sep = RUN_CONFIG["CSV_OUTPUT_DELIMITER"]
 
 
@@ -71,6 +71,7 @@ def ConnectDB():
 			sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_5.sql")
 			executeSQLFromFile(sqlfile)
 			cur.execute("select to_sample from signs_of_life_crawler limit 1")
+# 
 		try:
 			# check the fx_hcj__* fields have been added to the db
 			cur.execute("select fx_hcj__secu_xss from signs_of_life_crawler limit 1")
@@ -79,7 +80,38 @@ def ConnectDB():
 			db.rollback()
 			sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_6.sql")
 			executeSQLFromFile(sqlfile)
-			cur.execute("select to_sample from signs_of_life_crawler limit 1")
+			cur.execute("select fx_hcj__techno_Angular from signs_of_life_crawler limit 1")
+#
+		try:
+			# check the DNS fields have been added to the db
+			cur.execute("select dns_has_TXT from signs_of_life_crawler limit 1")
+		except (Exception, pg.ProgrammingError) as error:
+			plog.it(f"Error connecting to table: {error}", is_error=True)
+			db.rollback()
+			sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_7.sql")
+			executeSQLFromFile(sqlfile)
+			cur.execute("select dns_value_CAA from signs_of_life_crawler limit 1")
+#
+		try:
+			# check the dmarc fields have been added to the db
+			cur.execute("select dns_has_dmarc from signs_of_life_crawler limit 1")
+		except (Exception, pg.ProgrammingError) as error:
+			plog.it(f"Error connecting to table: {error}", is_error=True)
+			db.rollback()
+			sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_8.sql")
+			executeSQLFromFile(sqlfile)
+			cur.execute("select dns_value_dmarc from signs_of_life_crawler limit 1")
+#			
+		try:
+			# check the DKIM fields have been added to the db
+			cur.execute("select dns_has_DKIM from signs_of_life_crawler limit 1")
+		except (Exception, pg.ProgrammingError) as error:
+			plog.it(f"Error connecting to table: {error}", is_error=True)
+			db.rollback()
+			sqlfile = join(dirname(abspath(__file__)), "sql", "setup_crawler_db_9.sql")
+			executeSQLFromFile(sqlfile)
+			cur.execute("select dns_value_DKIM from signs_of_life_crawler limit 1")
+#
 		q = cur.fetchall()
 		cur.close()
 		print("DB Connection successful.")
@@ -269,6 +301,9 @@ def UploadSample(sample):
 		return
 	domain = sample['url']
 	try:
+		if not RUN_CONFIG.get("UPLOADSCREENSHOOTSTOLABTOOLS", False):
+			return
+
 		# grab session to use
 		session = get_session()
 		image_upload_url = RUN_CONFIG["SAMPLING_REST_API_IMAGE_URL"]
@@ -331,6 +366,11 @@ def get_session():
 
 def ProcessSamples(samples):
 	sam_plog.it(f"Processing {len(samples)} samples")
+
+	if not RUN_CONFIG.get("UPLOADSCREENSHOOTSTOLABTOOLS", False):
+		sam_plog.it("Sample upload to LABTOOLS is disabled by config")
+		return
+	
 	if RUN_CONFIG['MULTI_PROCESSING']:
 		pool = ThreadPool(processes=RUN_CONFIG['WORKERS_POST_PROCESSING'])
 		results = pool.map(UploadSample, samples)

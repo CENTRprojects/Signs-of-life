@@ -8,7 +8,7 @@ import shutil
 from datetime import date
 # performance logger
 from utils import PerformanceLogger
-plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"],"logging"), filename="db_redirect_perf.log", enable_logging = RUN_CONFIG['PERFORMANCE_LOGGING'])
+plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"],"logging"), filename=f"db_redirect_perf_{RUN_CONFIG['CONTAINER_ID']}.log", enable_logging = RUN_CONFIG['PERFORMANCE_LOGGING'])
 
 
 DB_FIELDS = set()

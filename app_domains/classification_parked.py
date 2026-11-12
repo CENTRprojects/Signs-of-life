@@ -5,9 +5,9 @@ import re
 import numpy as np
 import pandas as pd
 from os.path import join
+from pathlib import Path
 import os, sys, traceback
-from joblib import Parallel, delayed
-from tqdm import tqdm
+from memory_guard import adaptive_parallel
 import json
 
 from config import RUN_CONFIG
@@ -16,7 +16,7 @@ from ml.feature_eng import Featurer, MIN_TEXT_LG
 from ml.prediction import Predictor
 from links_finder import parse_html
 from language_patterns import PATTERN_PARKED, get_unicode_set
-from url_visitor import request_full_file_target_links, request_full_file_with_browser, get_sample_filenames
+from url_visitor import request_full_file_target_links, request_full_file_with_browser, get_sample_filenames, _take_screenshot_with_new_driver
 from page_processing import get_page_displayed_text, get_page_language
 
 # LOGGING
@@ -27,12 +27,12 @@ loggers = loggers + [logging.getLogger(name) for name in logging.root.manager.lo
 for log in loggers:
     log.setLevel(logging.WARNING)
 
-plog = PerformanceLogger(filename="predictions_perf.log", to_screen=True,
+plog = PerformanceLogger(filename=f"predictions_perf_{RUN_CONFIG['CONTAINER_ID']}.log", to_screen=True,
                          enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
-plog2 = PerformanceLogger(filename="unit_predict_park_perf.log", to_screen=False,
+plog2 = PerformanceLogger(filename=f"unit_predict_park_perf{RUN_CONFIG['CONTAINER_ID']}.log", to_screen=False,
                           enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
 plog2.enabled = False  # just turning this off manually for now
-sam_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename="sam_p.log",
+sam_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename=f"sam_p_{RUN_CONFIG['CONTAINER_ID']}.log",
                              enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
 
 # Registrars
@@ -82,6 +82,7 @@ GDADDY_LANDER = "/lander"
 SPE_SET = {}
 
 LIST_SPE_WORDS = ["sale", "blocked", "construction", "expired", "index_of", "other", "reserved", "starter"]
+PLACEHOLDERS = ['"name": "Your Organization Name",']
 
 # Machine Learning
 FT = Featurer(RUN_CONFIG) # features building
@@ -534,6 +535,7 @@ class PageParkClassifier():
         self.text_feat = None
         self.pred_ml_park = False
         self.ml_feat_special_words = {}
+        self.placeholder_found = None
 
         # Emptiness
         self.js_or_iframe_found = None
@@ -696,6 +698,15 @@ class PageParkClassifier():
         # Pattern research
         self.kw_park_notice, self.kw_parked, self.missing_language = detect_parking_pattern(html, txt, lg, url, n_words)
         plog2.it(f"parking pattern: {self.kw_park_notice} | {self.kw_parked} | {self.missing_language}")
+
+    def identify_placeholders(self):
+        """Detect placeholder strings commonly used on parked websites"""
+        if(self.registrar_found):
+            for placeholder in PLACEHOLDERS:
+                if (placeholder in self.html):
+                    self.kw_parked = True
+                    self.placeholder_found = True
+                    break
 
     def validate_registrar(self):
         """Validate if the page is a registrar by cross-checking clues"""
@@ -898,7 +909,10 @@ class PageParkClassifier():
 
                     self.identify_parking_pattern()
 
-                    self.validate_registrar()
+                    self.identify_placeholders()
+
+                    if(not self.placeholder_found):
+                        self.validate_registrar()
 
                     # parking conclusion
                     if self.registrar_found or self.kw_parked or self.pred_is_empty or self.pred_ml_park:
@@ -1009,9 +1023,7 @@ def predict_parking(documents):
     plog2.perf_go(f"Performing first classification on {len(documents)} urls")
     if RUN_CONFIG["MULTI_PROCESSING"]:
         plog.it("Performing multi-processing first classification")
-        list_res = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"], require='sharedmem')(
-            delayed(single_page_classify_parking)(batch) for batch in
-            tqdm(X_first))
+        list_res = adaptive_parallel(single_page_classify_parking, X_first, phase="classification")
     else:
         # non parallel
         list_res = []
@@ -1048,8 +1060,8 @@ def predict_parking(documents):
         # predict
         if RUN_CONFIG["MULTI_PROCESSING"]:
             plog.it("Performing multi-processing second classification")
-            list_res_second = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"], require='sharedmem')(
-                delayed(single_page_classify_parking)(website) for website in tqdm(X_target_websites))
+            list_res_second = adaptive_parallel(single_page_classify_parking, X_target_websites,
+                                                phase="classification_targets")
         else:
             # --non parallel
             list_res_second = []
@@ -1070,7 +1082,7 @@ def predict_parking(documents):
     # Revisit with Browser and classification
     if ("DO_JS_INTERPRETATION" in RUN_CONFIG) and RUN_CONFIG["DO_JS_INTERPRETATION"]:
         plog.it("performing JS interpretation")
-        links_to_revisit_with_js = [e for e in preds if (e["to_revisit_with_js"] or e["to_sample"])]
+        links_to_revisit_with_js = [e for e in preds if (e["to_revisit_with_js"] and e["to_sample"])]
 
         if len(links_to_revisit_with_js) > 0:
             print("-------Javascript interpretation for {} urls".format(len(links_to_revisit_with_js)))
@@ -1087,8 +1099,8 @@ def predict_parking(documents):
             plog2.perf_go(f"Performing JS classification on {len(links_to_revisit_with_js)} urls")
             # predict
             if RUN_CONFIG["MULTI_PROCESSING"]:
-                list_res_js = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"], require='sharedmem')(
-                    delayed(single_page_classify_parking)(website) for website in tqdm(X_js_rendered_websites))
+                list_res_js = adaptive_parallel(single_page_classify_parking, X_js_rendered_websites,
+                                                phase="classification_js")
             else:
                 # --non parallel
                 list_res_js = []
@@ -1103,6 +1115,39 @@ def predict_parking(documents):
 
             # consolidation
             preds = consolidate_original_and_js_rendered_results(preds, preds_js)
+
+    # Take screenshots for any sampled page whose PNG is still missing — scan JSON files directly
+    if RUN_CONFIG.get("DO_SAMPLING", False):
+        sampling_folder = Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"])
+        links_to_screenshot = []
+        for json_file in sampling_folder.glob("*.resu.*.json"):
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+                ss_filename = data.get("ss_filename")
+                if ss_filename and not (Path(RUN_CONFIG["MAIN_DIR"]) / ss_filename).exists():
+                    links_to_screenshot.append({"url": data.get("input_url") or data.get("url", ""), "ss_filename": ss_filename})
+            except Exception:
+                pass
+        print(f"[SS DEBUG] json files scanned={len(list(sampling_folder.glob('*.resu.*.json')))} | missing png={len(links_to_screenshot)}")
+        if links_to_screenshot:
+            sam_plog.it(f"Taking screenshots for {len(links_to_screenshot)} sampled pages with missing PNG...")
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                remaining = [e for e in links_to_screenshot if not (Path(RUN_CONFIG["MAIN_DIR"]) / e["ss_filename"]).exists()]
+                if not remaining:
+                    break
+                sam_plog.it(f"Screenshot attempt {attempt}/{max_retries}: {len(remaining)} remaining...")
+                workers = max(1, RUN_CONFIG["WORKERS_POST_PROCESSING"] // attempt)
+                adaptive_parallel(_take_screenshot_with_new_driver, remaining, phase="screenshots",
+                                  max_jobs=workers)
+            still_failed = [e for e in links_to_screenshot if not (Path(RUN_CONFIG["MAIN_DIR"]) / e["ss_filename"]).exists()]
+            if still_failed:
+                pending_file = sampling_folder / "pending_screenshots.json"
+                existing = json.load(open(pending_file)) if pending_file.exists() else []
+                with open(pending_file, 'w') as f:
+                    json.dump(existing + still_failed, f, indent=2, default=str)
+                sam_plog.it(f"{len(still_failed)} screenshots still missing — saved to {pending_file}")
 
     plog.it("doing last cleanup")
     # Remove redirection to same domain

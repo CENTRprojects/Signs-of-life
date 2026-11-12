@@ -1,0 +1,7 @@
+ALTER TABLE signs_of_life_crawler 
+ADD COLUMN dns_has_DKIM VARCHAR,
+ADD COLUMN dns_value_DKIM VARCHAR,
+ADD COLUMN dns_DKIM_comment VARCHAR,
+ADD COLUMN dns_has_MX VARCHAR,
+ADD COLUMN dns_value_MX VARCHAR,
+ADD COLUMN dns_MX_comment VARCHAR;

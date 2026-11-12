@@ -2,6 +2,7 @@
 In particular, input mail selection, HTTP requests orchestration and scenario selection"""
 
 import os
+import socket
 from os.path import join
 
 MAIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -42,7 +43,25 @@ RUN_CONFIG = {
     "DO_JS_INTERPRETATION": True,
     # "DO_JS_INTERPRETATION": False,
     "DO_CONCAT_FORMAT": True,
-    "DO_SAMPLING": False,
+    "DO_SAMPLING": True,
+
+    # DNS 
+    "RESOLVER_NAMESERVER": "9.9.9.9",
+    # if DO_DNS is set to False, all DNS lines will be ignored, even if set to True
+    "DO_DNS": True,
+    "DO_DNS_A": True,
+    "DO_DNS_AAAA": True,
+    "DO_DNS_CAA": True,
+    "DO_DNS_CNAME": True,
+    "DO_DNS_NS": True,
+    "DO_DNS_RRSIG": True,
+    "DO_DNS_SOA": True,
+    "DO_DNS_TXT": True,
+    "DO_DNS_MX": True,
+    "DO_DNS_DMARC": True,   # DMARC record will be gathered via TXT request. But there's need to set DO_DNS_TXT as True for this
+    "DO_DNS_DKIM": True,    # Without the key, we can only check for DKIM existance. This is done via NS and A requests, but does not require the relevant tags to be set as True
+    "DNS_DKIM_TIMEOUT": 15, # DKIM extraction has an action that requires a timeout decleration, otherwise the process is stuck
+                            # This timeout is set separately for every domain, so it's recommended to set a long timeout
 
     # REQUESTS ENGINE
     # "USE_UVLOOP": True,
@@ -108,7 +127,7 @@ RUN_CONFIG = {
     # Set the sampling_rate to a fractional percentage of the desired rate. e.g. 0.1 = 10% of pages will be sampled, or 1.0 = 100% of pages will be sampled.
     "SAMPLING_RATE": 0.001,
     "SAMPLING_MAX_SCREENSHOT_HEIGHT_PX": 1200,
-    "SAMPLING_LOCAL_FOLDER": join(MAIN_DIR, "output", "sampling"),
+    "SAMPLING_LOCAL_FOLDER": os.environ.get("SAMPLING_LOCAL_FOLDER", join(MAIN_DIR, "output", "sampling")),
     # "SAMPLING_DBNAME": "samplingdb", # direct db insert not (yet) implemented, use the rest API below.
     # "SAMPLING_DBHOST": "localhost",
     # "SAMPLING_DBPORT": 5432,
@@ -131,7 +150,7 @@ RUN_CONFIG = {
     # DATABASE STORAGE
     # if True, the program will convert any csvs it finds in the output folder into the defined database and move the csvs to the storage folder
     # set these in the .env folder for security purposes, as this file is stored on the git.
-    "USE_DB": False,
+    "USE_DB": True,
     "DBNAME": "signs_of_life",  # database where you're going to store all the of data
     "DBHOST": "dbpostgres",  # hostname or ip address of the db server
     "DBPORT": '5432',  # db access port
@@ -145,6 +164,12 @@ RUN_CONFIG = {
     # save intermediary files
     "DEBUG_MODE": False,
     "DEBUG_PRINT": False,
+
+    # LABTOOLS
+    "SAVESCREENSHOOTSTODISK": True,
+    "UPLOADSCREENSHOOTSTOLABTOOLS": False,
+
+    "CONTAINER_ID": socket.gethostname()
 }
 
 # version
@@ -190,4 +215,4 @@ except IOError:
 
 from utils import PerformanceLogger
 
-PLOG = PerformanceLogger(filename="main_perf.log", enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
+PLOG = PerformanceLogger(filename=f"main_perf_{RUN_CONFIG['CONTAINER_ID']}.log", enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])

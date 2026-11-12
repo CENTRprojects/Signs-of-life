@@ -2,8 +2,7 @@
 import re
 from bs4 import BeautifulSoup
 from langdetect import detect
-from joblib import Parallel, delayed
-from tqdm import tqdm
+from memory_guard import adaptive_parallel
 
 from utils import tag_visible
 from config import RUN_CONFIG, PLOG
@@ -20,8 +19,7 @@ RE_HAS_LETTER = re.compile("[A-Z]", flags=re.IGNORECASE)
 def get_page_displayed_text(list_websites):
     """Extract hard-coded displayed text from a list of HTML pages"""
     # html to text
-    list_url_to_text = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"])(
-        delayed(unit_html_to_text)(batch) for batch in tqdm(list_websites))
+    list_url_to_text = adaptive_parallel(unit_html_to_text, list_websites, phase="html_to_text")
     dict_url_to_text = dict()
     for e in list_url_to_text:
         dict_url_to_text[e[0]] = e[1::]
@@ -34,8 +32,8 @@ def get_page_displayed_text(list_websites):
 def get_page_language(list_websites_with_displayed_text):
     """Detect the language of a list of HTML pages with their associated displayed texts"""
     # language detection
-    list_url_to_lgg = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"])(
-        delayed(unit_detect_language)(doc) for doc in tqdm(list_websites_with_displayed_text))
+    list_url_to_lgg = adaptive_parallel(unit_detect_language, list_websites_with_displayed_text,
+                                        phase="detect_language")
     # format results
     dict_url_to_lgg = dict()
     for e in list_url_to_lgg:

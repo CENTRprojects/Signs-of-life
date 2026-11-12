@@ -61,6 +61,19 @@ def gather_url_saved(path_url_save):
     return list_existing_url
 
 
+def gather_url_status(path_url_save):
+    """Read URL level pickles and keep only {url: to_revisit} (the html of the pages is not kept in memory)"""
+    url_status = {}
+    for url_json in os.listdir(path_url_save):
+        try:
+            with open(join(path_url_save, url_json), 'r') as f:
+                resu = json.load(f)
+            url_status[resu["url"]] = resu.get("to_revisit", False)
+        except Exception:
+            continue
+    return url_status
+
+
 def remove_url_saved(path_url_save):
     """Delete temporary saved URL request responses"""
     list_urls = os.listdir(path_url_save)

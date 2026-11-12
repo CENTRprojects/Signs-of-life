@@ -2,7 +2,6 @@
 
 import re
 import socket
-from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import os
@@ -18,24 +17,29 @@ import requests
 import aiohttp
 from aiohttp import ClientSession
 import asyncpool
+import json
 from selenium import webdriver
-import tracemalloc
+from selenium.common.exceptions import TimeoutException
+from PIL import Image
 
 from config import RUN_CONFIG
 from ref_headers_cookies_js import SET_ALL_CONSIDERED_HDS, SET_ALL_CONSIDERED_CKS
-from utils import save_obj, load_obj, gather_url_saved, remove_url_saved, convert_idna, is_str_full_digit, \
-    normalize_hcj_value
+from utils import save_obj, load_obj, gather_url_saved, gather_url_status, remove_url_saved, convert_idna, \
+    is_str_full_digit, normalize_hcj_value
 from status_codes import HTTP_STATUS
-from joblib import Parallel, delayed
 from utils import PerformanceLogger
+from memory_guard import AdaptiveAsyncLimiter, run_adaptive, adaptive_parallel
 
-# import psutil
+import psutil
 PREF_HDRS = "fx_hdr_"
 PREF_COOK = "fx_cks_"
 PREF_JS = "fx_jsc_"
 CL_HDRS = "headers"
 CL_COOKS = "cookies"
 SUSPICIOUS_COLS = ["kw_park_notice"]  # kw_park_notice may contain other languages
+#
+_MEM_THROTTLE_MIN_FREE_MB = 500   # pause Chrome launches below this free RAM threshold
+_MEM_THROTTLE_WAIT_S = 5          # seconds to wait between checks when throttling
 
 # Attempt UVLOOP setup
 try:
@@ -54,13 +58,12 @@ loggers = loggers + [logging.getLogger(name) for name in logging.root.manager.lo
 for log in loggers:
     log.setLevel(logging.WARNING)
 
-req_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename="req_p.log",
+req_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename=f"req_p_{RUN_CONFIG['CONTAINER_ID']}.log",
                              enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
-main_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename="main_p.log",
+main_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename=f"main_p_{RUN_CONFIG['CONTAINER_ID']}.log",
                               enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
-sam_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename="sam_p.log",
+sam_plog = PerformanceLogger(filepath=join(RUN_CONFIG["MAIN_DIR"], "logging"), filename=f"sam_p_{RUN_CONFIG['CONTAINER_ID']}.log",
                              enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
-tracemalloc.start()
 
 
 class RateLimiter:
@@ -295,6 +298,9 @@ class FileData:
         :param force_new: If True, any website already visited will be overwritten
         :return: save HTML pages in self.documents
         """
+        # free the previous round documents (raw html of the whole chunk) before visiting again
+        self.documents = []
+
         # All urls
         df = self.initial_table
         ind_valid_schema = df["ind_non_schema"] != False
@@ -315,14 +321,11 @@ class FileData:
                 list_dict_unique = [e for e in list_dict_unique if (e["url"] not in url_alr.keys())]
             l_2 = len(list_dict_unique)
 
-            # Reuse urls already done in a former run at  URL level
-            list_existing_url = [dico_to_website(d) for d in gather_url_saved(RUN_CONFIG["PATH_URL_SAVE"])]
-            if len(list_existing_url) > 0:
-                url_alr = dict()
-                for e in list_existing_url:
-                    if not e.to_revisit:
-                        url_alr[e.url] = 1
-                list_dict_unique = [e for e in list_dict_unique if (e["url"] not in url_alr.keys())]
+            # Reuse urls already done in a former run at  URL level (only url + to_revisit are loaded, not the html)
+            url_status = gather_url_status(RUN_CONFIG["PATH_URL_SAVE"])
+            if len(url_status) > 0:
+                url_alr = {url for url, to_revisit in url_status.items() if not to_revisit}
+                list_dict_unique = [e for e in list_dict_unique if (e["url"] not in url_alr)]
             l_3 = len(list_dict_unique)
 
             print("Total urls in file : {}".format(l_1))
@@ -343,10 +346,11 @@ class FileData:
             print("debug MINUTES_TO_TIMEOUT : " + str(RUN_CONFIG["MINUTES_TO_TIMEOUT"]))
 
             # Multi process/Mono process asynchronous
+            # the number of running processes and of async workers per process follow the memory usage
             tt = time.time()
             if RUN_CONFIG["MULTI_PROCESSING"]:
-                Parallel(n_jobs=RUN_CONFIG["MAX_PROCESSES"])(
-                    delayed(async_url_batch_visit)(batch, do_sampling=True) for batch in url_batches)
+                run_adaptive(async_url_batch_visit, url_batches, key="MAX_PROCESSES", phase="requests",
+                             dynamic_kwargs={"max_workers": "MAX_WORKERS"}, do_sampling=True)
             else:
                 async_url_batch_visit(list_dict_unique, do_sampling=True)
 
@@ -439,15 +443,28 @@ class FileData:
         req_plog.perf_end("Finished")
 
 
-def async_url_batch_visit(partial_dict_unique, do_sampling=False):
+def async_url_batch_visit(partial_dict_unique, do_sampling=False, max_workers=None):
     """ Start Asynchronous loop"""
     loop = asyncio.new_event_loop()
-    loop.run_until_complete(main_async_batch_visit(partial_dict_unique, loop, do_sampling))
+    loop.run_until_complete(main_async_batch_visit(partial_dict_unique, loop, do_sampling, max_workers))
+    if RUN_CONFIG.get("DO_SAMPLING", False):
+        sample_links = [d for d in partial_dict_unique if d.get("to_sample")]
+        if sample_links:
+            sam_plog.it(
+                f"Launching browser visits for {len(sample_links)} samples"
+            )
+            request_full_file_with_browser(sample_links)
+
     loop.close()
 
 
-async def main_async_batch_visit(dict_unique, loop, do_sampling):
+async def main_async_batch_visit(dict_unique, loop, do_sampling, max_workers=None):
     """ Launch pool of asynchronous requests"""
+    # MAX_WORKERS coroutines are started, but only limiter.limit of them run a request at the same time:
+    # the limit goes down/up with the memory usage
+    limiter = AdaptiveAsyncLimiter(max_workers or RUN_CONFIG["MAX_WORKERS"])
+    monitor_task = loop.create_task(limiter.monitor())
+
     connector = aiohttp.TCPConnector(ssl=False, loop=loop, resolver=aiohttp.AsyncResolver(loop=loop),
                                      family=socket.AF_INET, limit=RUN_CONFIG["LIMIT_REQUEST"],
                                      # force_close=True)
@@ -464,7 +481,7 @@ async def main_async_batch_visit(dict_unique, loop, do_sampling):
         # start Queue Pool: When a request is being processed by the remote server, the Python worker
         # is released to be able to work on another request until the answer is received
         async with asyncpool.AsyncPool(loop=loop,
-                                       num_workers=RUN_CONFIG["MAX_WORKERS"],
+                                       num_workers=limiter.max_limit,
                                        name="Pool_{}".format(str(pid)),
                                        logger=log_manager,
                                        worker_co=single_url_visit,
@@ -476,17 +493,26 @@ async def main_async_batch_visit(dict_unique, loop, do_sampling):
             for doc in dict_unique:
                 # print(f"Pushing {doc['url']}")
                 cnt += 1
-                await pool.push(doc, session, do_sampling)
+                await pool.push(doc, session, do_sampling, limiter)
 
+    monitor_task.cancel()
     await asyncio.sleep(1)
     # closing independant connector
     await connector.close()
 
 
-async def single_url_visit(domain, session, do_sampling):
+async def single_url_visit(domain, session, do_sampling, limiter):
     """
     Launch one HTTP request to one domain
     """
+    await limiter.acquire()
+    try:
+        return await _single_url_visit(domain, session, do_sampling)
+    finally:
+        limiter.release()
+
+
+async def _single_url_visit(domain, session, do_sampling):
     url = domain["url"]
     if RUN_CONFIG["DEBUG_PRINT"]:
         print("Starting url: {}".format(url))
@@ -565,14 +591,19 @@ async def single_url_visit(domain, session, do_sampling):
                         chunks.append(chunk)
 
                 # CHECK IF RESPONSE IN LESS THAN MAX_MB TO LATER PROCESS THE DOMAIN PAGE
-                if total_bytes < max_range_bytes:
-                    async with session.get(full_url, timeout=RUN_CONFIG["MINUTES_TO_TIMEOUT"] * 60) as response:
-                        page = dict()
-                        page["text"] = b"".join(chunks).decode(errors="ignore")
-                        page["url"] = response.url
-                        page["history"] = response.history
-                        page["status"] = response.status
-                        # wb.is_error = False
+                # (url/history/status are taken from the same response: no second download of the page)
+                if total_bytes <= max_range_bytes:
+                    page = dict()
+                    page["text"] = b"".join(chunks).decode(errors="ignore")
+                    page["url"] = response.url
+                    page["history"] = response.history
+                    page["status"] = response.status
+
+            # CONTENT-LENGTH LARGER THAN MAX_MB: the page is not downloaded
+            else:
+                wb.is_error = True
+                wb.comment = "Page size too large error"
+                wb.to_revisit = False
 
     # Catching errors
     except aiohttp.client.ClientConnectorError as e:
@@ -722,7 +753,8 @@ def request_full_file_target_links(target_links_to_visit):
     remove_url_saved(RUN_CONFIG["PATH_URL_REVISIT_SAVE"])
 
     # todo: add NON-PARALLEL option
-    Parallel(n_jobs=RUN_CONFIG["MAX_PROCESSES"])(delayed(async_url_batch_visit)(batch) for batch in url_batches)
+    run_adaptive(async_url_batch_visit, url_batches, key="MAX_PROCESSES", phase="requests_targets",
+                 dynamic_kwargs={"max_workers": "MAX_WORKERS"})
     list_target_websites = [dico_to_website(d) for d in gather_url_saved(RUN_CONFIG["PATH_URL_REVISIT_SAVE"])]
 
     remove_url_saved(RUN_CONFIG["PATH_URL_REVISIT_SAVE"])
@@ -749,7 +781,17 @@ def single_url_browser_visit(link, webdriver):
     webdriver.implicitly_wait(LOADING_TIME)  # wait for full loading
 
     # visit url
-    webdriver.get(full_url)
+    try:
+        webdriver.get(full_url)
+    except TimeoutException:
+        try:
+            webdriver.execute_script("window.stop()")
+        except Exception:
+            pass
+    except Exception as e:
+        resu.comment = f"PAGE LOAD FAILED: {e}"
+        resu.is_error = True
+        return resu
 
     # loading timeout
     webdriver.implicitly_wait(0)
@@ -775,16 +817,231 @@ def single_url_browser_visit(link, webdriver):
     return resu
 
 
+def _wait_for_page_ready(driver, timeout=15):
+    """Wait until the page is fully loaded and visually ready before taking a screenshot."""
+    try:
+        driver.set_script_timeout(5)  # cap each execute_script at 5s so loops can't stall
+    except Exception:
+        pass
+
+    deadline = time.monotonic() + timeout
+
+    # 1. readyState complete
+    while time.monotonic() < deadline:
+        try:
+            if driver.execute_script("return document.readyState") == 'complete':
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+    # 2. all images decoded — prevents blank image placeholders
+    while time.monotonic() < deadline:
+        try:
+            if driver.execute_script(
+                "return Array.from(document.images).every(function(img){ return img.complete; })"
+            ):
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+    # 3. fonts loaded — unloaded fonts render as invisible/blank text
+    while time.monotonic() < deadline:
+        try:
+            if driver.execute_script(
+                "return !document.fonts || document.fonts.status === 'loaded'"
+            ):
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    # 4. scroll to trigger lazy-loaded images, then back to top
+    try:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(1)
+        driver.execute_script("window.scrollTo(0, 0);")
+    except Exception:
+        pass
+
+    # 5. final grace period for paint
+    time.sleep(2)
+
+
+def _is_blank_screenshot(filepath):
+    """Return True if the screenshot is essentially a blank/single-color image (std dev of pixels < 8)."""
+    try:
+        img = Image.open(filepath).convert('RGB').resize((100, 100))
+        arr = np.array(img, dtype=np.float32)
+        return float(arr.std()) < 8.0
+    except Exception:
+        return False
+
+
+def _save_screenshot_if_valid(driver, ss_path, url):
+    """
+    Takes a screenshot only if the page is real content.
+    Checks (in order):
+      1. Not a Chrome error page (chrome-error://, about:)
+      2. Pixel variance — not blank/white
+    Returns True if screenshot saved successfully, False otherwise.
+    """
+    # 1. Chrome error page check — two signals combined for reliability:
+    #    a) URL-based: chrome-error:// is set when Chrome fully navigates to error page
+    #    b) DOM-based: Chrome error pages always render <div id="main-message"> regardless of URL
+    try:
+        current_url = driver.current_url
+        if current_url.startswith("chrome-error://") or current_url.startswith("about:"):
+            sam_plog.it(f"({url}) | SCREENSHOT SKIPPED — chrome error URL")
+            return False
+    except Exception:
+        pass
+    try:
+        is_error_page = driver.execute_script(
+            "var el = document.getElementById('main-message');"
+            "return el !== null && el.innerText.trim().length > 0;"
+        )
+        if is_error_page:
+            sam_plog.it(f"({url}) | SCREENSHOT SKIPPED — chrome error page (DOM check)")
+            return False
+    except Exception:
+        pass
+
+    # 2. Resize window to full page height before saving
+    try:
+        total_height = driver.execute_script("""
+            if (document.scrollingElement){ return document.scrollingElement.scrollHeight; }
+            return document.body.offsetHeight;
+        """)
+        max_height = RUN_CONFIG["SAMPLING_MAX_SCREENSHOT_HEIGHT_PX"]
+        driver.set_window_size(1200, total_height if total_height <= max_height else max_height)
+    except Exception:
+        driver.set_window_size(1200, 900)
+
+    # 3. Save
+    driver.save_screenshot(ss_path)
+
+    # 4. Blank/white check on actual saved pixels
+    if _is_blank_screenshot(ss_path):
+        try:
+            Path(ss_path).unlink()
+        except FileNotFoundError:
+            pass
+        sam_plog.it(f"({url}) | SCREENSHOT BLANK — deleted")
+        return False
+
+    return True
+
+
+def _take_screenshot_with_new_driver(link):
+    """Open a fresh driver, navigate to URL, and take a screenshot. No page data is returned."""
+    driver = None
+    try:
+        driver = initiate_browser_driver()
+        full_url = link['url'] if re.search("^https*:", link['url'], re.IGNORECASE) else "http://" + link['url']
+
+        try:
+            driver.get(full_url)
+        except TimeoutException:
+            sam_plog.it(f"({link['url']}) | PAGE LOAD TIMEOUT — stopping load and continuing")
+            try:
+                driver.execute_script("window.stop()")
+            except Exception:
+                pass
+        except Exception as load_err:
+            sam_plog.it(f"({link['url']}) | PAGE LOAD FAILED: {load_err} — skipping screenshot")
+            return
+
+        try:
+            _wait_for_page_ready(driver, timeout=15)
+        except TimeoutException as wait_err:
+            sam_plog.it(f"({link['url']}) | PAGE READY TIMEOUT: {wait_err} — continuing to screenshot anyway")
+        except Exception as wait_err:
+            sam_plog.it(f"({link['url']}) | PAGE READY FAILED: {wait_err} — continuing to screenshot anyway")
+
+        ss_path = str(Path(RUN_CONFIG["MAIN_DIR"]) / link['ss_filename'])
+
+        try:
+            if _save_screenshot_if_valid(driver, ss_path, link['url']):
+                sam_plog.it(f"({link['url']}) | SCREENSHOT SAVED (retry)")
+        except TimeoutException as ss_err:
+            sam_plog.it(f"({link['url']}) | SCREENSHOT SAVE TIMEOUT: {ss_err}")
+        except Exception as ss_err:
+            sam_plog.it(f"({link['url']}) | SCREENSHOT SAVE FAILED: {ss_err}")
+
+    except Exception as e:
+        sam_plog.it(f"({link['url']}) | SCREENSHOT RETRY FAILED: {e}")
+    finally:
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+
 def request_full_file_with_browser(links):
     """Visit a list of URLs with Chrome webdriver"""
     # visiting links
-    all_resu = []
-    all_resu = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"])(
-        delayed(single_url_browser_load_visit)(link) for link in tqdm(links))
+    all_resu = adaptive_parallel(single_url_browser_load_visit, links, phase="browser")
 
     all_resu = [e for e in all_resu if (e is not None)]
 
+    # Retry screenshots that were not saved during the main run (single retry)
+    if RUN_CONFIG["DO_SAMPLING"]:
+        failed_ss = [
+            link for link in links
+            if link.get('to_sample') and not (Path(RUN_CONFIG["MAIN_DIR"]) / link['ss_filename']).exists()
+        ]
+
+        if failed_ss:
+            sam_plog.it(f"RETRY 1: Retrying {len(failed_ss)} failed screenshots...")
+
+            workers = max(1, RUN_CONFIG["WORKERS_POST_PROCESSING"] // 2)
+            adaptive_parallel(_take_screenshot_with_new_driver, failed_ss, phase="screenshots_retry",
+                              max_jobs=workers)
+
+        # after all retries, persist any still-missing screenshots to a file for manual re-run
+        still_failed = [link for link in links if link.get('to_sample') and not (Path(RUN_CONFIG["MAIN_DIR"]) / link['ss_filename']).exists()]
+        if still_failed:
+            pending_file = Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]) / "pending_screenshots.json"
+            with open(pending_file, 'w') as f:
+                json.dump(still_failed, f, indent=2, default=str)
+            sam_plog.it(f"{len(still_failed)} screenshots still missing — saved to {pending_file}")
+
     return all_resu
+
+
+def retry_pending_screenshots():
+    """Re-run screenshots that failed during a previous run (reads pending_screenshots.json)."""
+    pending_file = Path(RUN_CONFIG["SAMPLING_LOCAL_FOLDER"]) / "pending_screenshots.json"
+    if not pending_file.exists():
+        print("No pending_screenshots.json found — nothing to retry.")
+        return
+
+    with open(pending_file) as f:
+        links = json.load(f)
+
+    main_dir = Path(RUN_CONFIG["MAIN_DIR"])
+
+    links = [l for l in links if not (main_dir / l['ss_filename']).exists()]
+    if not links:
+        print("All pending screenshots already exist — nothing to retry.")
+        pending_file.unlink()
+        return
+
+    print(f"RETRY 1: Retrying {len(links)} pending screenshots.")
+    workers = max(1, RUN_CONFIG["WORKERS_POST_PROCESSING"] // 2)
+    adaptive_parallel(_take_screenshot_with_new_driver, links, phase="screenshots_pending", max_jobs=workers)
+
+    still_failed = [l for l in links if not (main_dir / l['ss_filename']).exists()]
+    if still_failed:
+        with open(pending_file, 'w') as f:
+            json.dump(still_failed, f, indent=2, default=str)
+        print(f"{len(still_failed)} screenshots still failed — pending_screenshots.json updated.")
+    else:
+        pending_file.unlink()
+        print("All pending screenshots saved successfully.")
 
 
 '''
@@ -860,70 +1117,56 @@ def get_sample_filenames(url):
     return (ss_filename.as_posix(), raw_filename.as_posix(), clean_filename.as_posix(), json_filename.as_posix())
 
 
+def _wait_for_free_memory(min_free_mb=_MEM_THROTTLE_MIN_FREE_MB, max_wait_s=120):
+    """Block until the system has at least min_free_mb of free RAM, or max_wait_s elapses."""
+    deadline = time.monotonic() + max_wait_s
+    while True:
+        mem = psutil.virtual_memory()
+        available_mb = mem.available / (1024 * 1024)
+        if available_mb >= min_free_mb:
+            return
+        if time.monotonic() >= deadline:
+            print(f"[MEM THROTTLE] timeout after {max_wait_s}s — proceeding with {available_mb:.0f} MB available")
+            return
+        print(f"[MEM THROTTLE] only {available_mb:.0f} MB available — waiting {_MEM_THROTTLE_WAIT_S}s before Chrome launch")
+        time.sleep(_MEM_THROTTLE_WAIT_S)
+
+
 def single_url_browser_load_visit(link):
     """Visit one url with Chrome webdriver"""
+    driver = None
+    resu = None
     try:
         if RUN_CONFIG["DEBUG_PRINT"]:
             print(f"----> START single_url_browser_load_visit {link['url']} <-------")
-        webdriver = initiate_browser_driver()
-        resu = single_url_browser_visit(link, webdriver)
+        try:
+            driver = initiate_browser_driver()
+        except Exception as e:
+            print(f"First driver init failed for {link['url']}: {e} — retrying once")
+            driver = initiate_browser_driver()
+        resu = single_url_browser_visit(link, driver)
 
-        # screenshot save
-        if RUN_CONFIG["DO_SAMPLING"] and link['to_sample']:
+        # screenshot save — only if the page actually loaded (resu is None means JS/load error)
+        if RUN_CONFIG["DO_SAMPLING"] and link['to_sample'] and resu is not None:
             sam_plog.it(f"({link['url']}) | PREPARING FOR SCREENSHOT : {link['ss_filename']}")
-            '''
-            # use a scrolling trick to make sure page has fully loaded before taking the screenshot (so we don't get an empty page)
-            driver.execute_script("""
-                (function () {
-                    var y = 0;
-                    var step = 100;
-                    window.scroll(0, 0);
-
-                    function f() {
-                        if (y < document.body.scrollHeight) {
-                            y += step;
-                            window.scroll(0, y);
-                            setTimeout(f, 100);
-                        } else {
-                            window.scroll(0, 0);
-                            document.title += "scroll-done";
-                        }
-                    }
-
-                    setTimeout(f, 1000);
-                })();
-            """)
-
-            for i in range(30):
-                if "scroll-done" in driver.title:
-                    break
-                time.sleep(1)
-            '''
-            for i in range(30):
-                if webdriver.execute_script("""document.onreadystatechange = function () {
-                                               if (document.readyState == "complete") {
-                                                    return "complete";
-                                                }
-                                            }""") == 'complete':
-                    break
-                time.sleep(1)
-            total_height = webdriver.execute_script("""
-                if (document.scrollingElement){
-                    return document.scrollingElement.scrollHeight;
-                } 
-                return document.body.offsetHeight;
-            """)
-            max_height = RUN_CONFIG["SAMPLING_MAX_SCREENSHOT_HEIGHT_PX"]
-            webdriver.set_window_size(1200, total_height if total_height <= max_height else max_height)
-            webdriver.save_screenshot(link['ss_filename'])
-            sam_plog.it(f"({link['url']}) | SCREENSHOT SAVED")
-
-        webdriver.quit()
+            try:
+                _wait_for_page_ready(driver, timeout=30)
+                ss_path = str(Path(RUN_CONFIG["MAIN_DIR"]) / link['ss_filename'])
+                if _save_screenshot_if_valid(driver, ss_path, link['url']):
+                    sam_plog.it(f"({link['url']}) | SCREENSHOT SAVED")
+            except Exception as e:
+                sam_plog.it(f"({link['url']}) | SCREENSHOT FAILED: {e}")
 
     except Exception as e:
         print("JS error with {} of type: {} : {} --> js interpretation removed".format(link["url"], type(e), str(e)))
         # raise
         resu = None
+    finally:
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
     if RUN_CONFIG["DEBUG_PRINT"]:
         print(f"----> END single_url_browser_load_visit {link['url']}. Got result: {resu is not None} <-------")
     return resu
@@ -931,18 +1174,47 @@ def single_url_browser_load_visit(link):
 
 def initiate_browser_driver():
     """Open a Browser session"""
-    # options
     options = webdriver.ChromeOptions()
+    options.page_load_strategy = 'normal'
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('headless')
-    options.add_argument("disable-extensions")
-    options.add_argument('silent')
-    options.add_argument('window-size=1200x600')
-    options.add_argument(f'user-agent={USER_AGENT}')
-    # options.add_argument("--incognito")
+    options.add_argument('--headless=new')           # new headless mode — less detectable than old 'headless'
+    options.add_argument('--disable-extensions')
+    options.add_argument('--log-level=3')            # suppress Chrome console noise
+    options.add_argument('--window-size=1200,600')
+
+    #### Additions - Start
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-background-networking')
+    options.add_argument('--disable-default-apps')
+    options.add_argument('--disable-sync')
+    options.add_argument('--disable-translate')
+    options.add_argument('--hide-scrollbars')
+    options.add_argument('--metrics-recording-only')
+    options.add_argument('--mute-audio')
+    options.add_argument('--no-first-run')
+    options.add_argument('--safebrowsing-disable-auto-update')
+    options.add_argument('--js-flags=--max-old-space-size=128')  # cap V8 heap to 128 MB per tab
+    #### Additions - End
+
+    # ignore SSL / certificate issues
+    options.set_capability("acceptInsecureCerts", True)
+    options.add_argument('--ignore-certificate-errors')
+    options.add_argument('--ignore-ssl-errors')
+
+    options.add_argument(f'--user-agent={USER_AGENT}')
+    # hide automation fingerprints so sites don't serve blank pages to bots
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    options.add_experimental_option('useAutomationExtension', False)
     # launch Chrome
-    driver = webdriver.Chrome(chrome_options=options)
+    driver = webdriver.Chrome(options=options)
+
+    # hide navigator.webdriver property (another bot detection signal)
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        'source': 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
+    })
     # loading timeout
-    driver.implicitly_wait(LOADING_TIME)  # wait for full loading
-    return driver
+    driver.set_page_load_timeout(LOADING_TIME)
+    driver.implicitly_wait(LOADING_TIME)
+    return driver

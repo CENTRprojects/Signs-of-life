@@ -1,3 +1,4 @@
+--only-binary=spacy,murmurhash
 numpy==1.18.3
 requests==2.22.0
 joblib==0.13.0
@@ -14,6 +15,9 @@ hebrew-tokenizer==1.0.3
 jieba==0.42.1
 konlpy==0.5.2
 langdetect==1.0.8
+nltk==3.3.0
+#nltk==3.4.5
+murmurhash==1.0.10
 openpyxl==3.0.3
 Pillow==7.1.1
 pythainlp==2.1.4
@@ -23,7 +27,7 @@ tinysegmenter==0.4
 cchardet==2.1.1
 tqdm==4.45.0
 xgboost==1.0.2
-dnspython==1.16.0
+dnspython==2.3.0
 python-Levenshtein==0.12.1
 tldextract==2.2.2
 soynlp==0.0.493             

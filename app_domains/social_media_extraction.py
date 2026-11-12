@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 import tldextract
 from Levenshtein._levenshtein import distance
-from joblib import Parallel, delayed
-from tqdm import tqdm
 import logging
 loggers = [logging.getLogger()]  # get the root logger
 loggers = loggers + [logging.getLogger(name) for name in logging.root.manager.loggerDict]
@@ -13,6 +11,7 @@ for log in loggers:
     log.setLevel(logging.WARNING)
 
 from config import RUN_CONFIG, PLOG
+from memory_guard import adaptive_parallel
 from utils import clean_link, gather_url_saved, remove_url_saved, link_to_domain, save_obj
 from links_finder import parse_html_for_sm
 from url_visitor import request_full_file_target_links
@@ -45,8 +44,7 @@ def identify_social_media(documents):
 
     # First classification
     if RUN_CONFIG["MULTI_PROCESSING"]:
-        list_res = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"])(
-            delayed(unit_identify_sm)(batch) for batch in tqdm(X_first))
+        list_res = adaptive_parallel(unit_identify_sm, X_first, phase="social_media")
     else:
         # non parallel
         list_res = []
@@ -74,8 +72,8 @@ def identify_social_media(documents):
 
         # predict
         if RUN_CONFIG["MULTI_PROCESSING"]:
-            list_res_second = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"])(
-                delayed(unit_identify_sm)(website) for website in tqdm(X_target_websites))
+            list_res_second = adaptive_parallel(unit_identify_sm, X_target_websites,
+                                                phase="social_media_targets")
         else:
             # --non parallel
             list_res_second = []

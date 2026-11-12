@@ -1,7 +1,5 @@
 """Function that query the MX records of a domain"""
 import pandas as pd
-from joblib import Parallel, delayed
-from tqdm import tqdm
 
 # lower level of loggers
 import logging
@@ -14,6 +12,7 @@ for log in loggers:
     log.setLevel(logging.WARNING)
 
 from config import RUN_CONFIG, PLOG
+from memory_guard import adaptive_parallel
 from utils import link_to_domain
 
 MAIL_EXPECTED_COLS = ["url", "has_mx_record", "MXRecord", "has_own_mx_record", "mail_comment"]
@@ -27,8 +26,7 @@ def identify_mx_records_all_domains(documents):
 
     # First classification
     if RUN_CONFIG["MULTI_PROCESSING"]:
-        list_res = Parallel(n_jobs=RUN_CONFIG["WORKERS_POST_PROCESSING"])(
-            delayed(identify_mx_records_one_domain)(batch) for batch in tqdm(X_first))
+        list_res = adaptive_parallel(identify_mx_records_one_domain, X_first, phase="mail_exchange")
     else:
         # non parallel
         list_res = []

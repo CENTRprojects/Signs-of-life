@@ -2,6 +2,9 @@ app_domains/__pycache__
 .vscode/*
 env/*
 .env
+.env_*
+*.env
+*.env.*
 *.csv
 *.pyc
 inter/*.json
@@ -14,3 +17,4 @@ output/*
 .docker/docker_volumes
 .docker-compose.env
 input/touch
+SoL Crawler run notes.txt

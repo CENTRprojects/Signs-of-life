@@ -2,6 +2,8 @@
 Set the configuration parameters in config.py before running it
 """
 import re
+import gc
+import psutil
 import pandas as pd
 import numpy as np
 import os
@@ -11,12 +13,14 @@ import sys
 
 from config import RUN_CONFIG, MAIN_DIR
 from utils import remove_url_saved, PerformanceLogger
+from memory_guard import GOVERNOR, release_workers
 import output_processing as op
 
 # steps
-from url_visitor import FileData, interpret_boolean                     # DO_REQUESTS
+from url_visitor import FileData, interpret_boolean, retry_pending_screenshots  # DO_REQUESTS
 from page_processing import get_page_displayed_text, get_page_language  # DO_PAGE_PROCESSING
 from classification_parked import predict_parking                       # DO_CONTENT_CLASSIFICATION
+from DNS_data_extraction import extract_dns_data                        # DO_DNS
 from social_media_extraction import identify_social_media               # DO_SOCIAL_MEDIA
 from headers_cookies_js import analyse_headers_cookies_javascript       # DO_HCJ_EXTRACTION
 from mail_exchange import identify_mx_records_all_domains               # DO_MAIL_EXCHANGE
@@ -28,7 +32,14 @@ loggers = [logging.getLogger()]  # get the root logger
 loggers = loggers + [logging.getLogger(name) for name in logging.root.manager.loggerDict]
 for log in loggers:
     log.setLevel(logging.WARNING)
-plog = PerformanceLogger(filename="main_perf.log", enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
+plog = PerformanceLogger(filename=f"main_perf_{RUN_CONFIG['CONTAINER_ID']}.log", enable_logging=RUN_CONFIG['PERFORMANCE_LOGGING'])
+
+def _mem():
+    """Return a string with current process RSS and system available RAM in MB."""
+    proc_mb = psutil.Process().memory_info().rss / (1024 * 1024)
+    avail_mb = psutil.virtual_memory().available / (1024 * 1024)
+    return f"[MEM proc={proc_mb:.0f}MB avail={avail_mb:.0f}MB]"
+
 
 EXPECTED_ORDER = ["url", "ind_non_schema", "pred_is_parked", "is_error", "comment", "is_redirected",
                   "redirection_type", "is_redirected_different_domain",
@@ -39,7 +50,12 @@ EXPECTED_ORDER = ["url", "ind_non_schema", "pred_is_parked", "is_error", "commen
                   "has_facebook", "has_twitter", "has_linkedin", "has_reddit", "has_instagram", "has_github",
                   "feat_fb_lks", "feat_tw_lks", "feat_lk_lks", "feat_rd_lks", "feat_ig_lks", "feat_gh_lks",
                   "has_open_graph", "has_twitter_card", "has_schema_tag", "to_sample", "ss_filename", "raw_filename",
-                  "clean_filename", "json_filename"
+                  "clean_filename", "json_filename",
+                  "dns_has_RRSIG", "dns_value_RRSIG", "dns_RRSIG_comment", "dns_has_A", "dns_value_A", "dns_A_comment", "dns_has_NS", "dns_value_NS", 
+                  "dns_NS_comment", "dns_has_TXT", "dns_value_TXT", "dns_TXT_comment", "dns_has_AAAA", "dns_value_AAAA", "dns_AAAA_comment", 
+                  "dns_has_SOA", "dns_value_SOA", "dns_SOA_comment", "dns_has_CAA", "dns_value_CAA", "dns_CAA_comment", "dns_has_CNAME", 
+                  "dns_value_CNAME", "dns_CNAME_comment", "dns_has_dmarc", "dns_value_dmarc", "dns_dmarc_comment", 
+                  "dns_has_DKIM", "dns_value_DKIM", "dns_DKIM_comment", "dns_has_MX", "dns_value_MX", "dns_MX_comment"
                   ]
 
 
@@ -107,6 +123,21 @@ class Controller:
         plog.it(f"returning df_pred: {df_pred}")
         return df_pred
 
+    def collect_dns_data(self, datatype):
+        # extract dns data
+        print("extracting " + datatype)
+        plog.it(f"extracting DNS data: {datatype}")
+        df_dns_result = extract_dns_data(self.file_data.documents, datatype)
+        plog.it("creating output table")
+        out_df = self.file_data.output_table
+        plog.it("merging output table")
+
+        out_df = pd.merge(out_df, df_dns_result, on="url", how="left")
+
+        self.file_data.output_table = out_df
+        plog.it(f"returning df_dns_result: {df_dns_result}")
+        return df_dns_result
+
     def identify_social_media_activity(self):
         """ extract social medias data from all the url of the current documents"""
         df_media = identify_social_media(self.file_data.documents)
@@ -171,6 +202,7 @@ def main():
     :return: save result
     """
     plog.perf_go("Starting Crawler")  # profiles code until perf_end
+    GOVERNOR.start_monitor()
     print("Version: {}".format(RUN_CONFIG["version"]))
     super_raw_files = os.listdir(RUN_CONFIG["input_folder"])
     super_raw_files = sorted(super_raw_files, reverse=False)
@@ -228,7 +260,15 @@ def main():
         plog.perf_lap("Starting on new file: " + f)
         plog.it("\ninput_file: {}\noutput_file: {}".format(input_path, output_path))
 
+        # Set sampling folder to output/sampling/{filename}_{container_id}/
+        if RUN_CONFIG.get("DO_SAMPLING", False):
+            sampling_subfolder = join(MAIN_DIR, "output", "sampling", f"{f}_{RUN_CONFIG['CONTAINER_ID']}")
+            os.makedirs(sampling_subfolder, exist_ok=True)
+            RUN_CONFIG["SAMPLING_LOCAL_FOLDER"] = sampling_subfolder
+            os.environ["SAMPLING_LOCAL_FOLDER"] = sampling_subfolder  # inherited by spawned joblib workers
+
         # Main class
+        GOVERNOR.set_phase("load_" + f)
         ctl = Controller(f)
         if RUN_CONFIG["DO_REQUESTS"]:
             print("------------------REQUESTING------------------------")
@@ -315,6 +355,8 @@ def main():
                         a = time.time()
                         _ = ctl.predict_is_parked()
                         print("Parking prediction time : {}".format(time.time() - a))
+                        # classification workers keep the tokenizers / ML models in memory: free them
+                        release_workers("after classification")
                     except Exception as e:
                         print("CRITICAL ERROR: parking prediction failed: {}\t{}".format(type(e), str(e)))
                         plog.it("CRITICAL ERROR: parking prediction failed: {}\t{}".format(type(e), str(e)),
@@ -334,6 +376,133 @@ def main():
                                 is_error=True)
                         raise
 
+                if RUN_CONFIG["DO_DNS"]:
+                    print("{} -----DNS_DATA------------------------".format(f))
+                    if RUN_CONFIG["DO_DNS_RRSIG"]:
+                        try:
+                            print("dns RRSIG extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('RRSIG')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns RRSIG data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns RRSIG data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_A"]:
+                        try:
+                            print("dns a-record extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('A')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns a-record data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns a-record data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_NS"]:
+                        try:
+                            print("dns NS extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('NS')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns NS data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns NS data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_TXT"]:
+                        try:
+                            print("dns TXT extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('TXT')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns TXT data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns TXT data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_AAAA"]:
+                        try:
+                            print("dns AAAA-record extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('AAAA')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns AAAA-record data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns AAAA-record data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_SOA"]:
+                        try:
+                            print("dns SOA extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('SOA')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns SOA data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns SOA data extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_CAA"]:
+                        try:
+                            print("dns CAA extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('CAA')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns CAA data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data CAA extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_CNAME"]:
+                        try:
+                            print("dns CNAME extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('CNAME')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns CNAME data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data CNAME extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+                    
+                    if RUN_CONFIG["DO_DNS_DMARC"]:
+                        try:
+                            print("dns dmarc extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('dmarc')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns dmarc data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data dmarc extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+                    
+                    if RUN_CONFIG["DO_DNS_DKIM"]:
+                        try:
+                            print("dns DKIM extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('DKIM')
+                            print("dnssec data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns DKIM data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it("CRITICAL ERROR: dns data DKIM extraction failed: {}\t{}".format(type(e), str(e)), is_error=True)
+                            raise
+
+                    if RUN_CONFIG["DO_DNS_MX"]:
+                        try:
+                            print("dns MX extraction")
+                            a = time.time()
+                            _ = ctl.collect_dns_data('MX')
+                            print("dns MX data extraction time : {}".format(time.time() - a))
+                        except Exception as e:
+                            print("CRITICAL ERROR: dns MX data extraction failed: {}\t{}".format(type(e), str(e)))
+                            plog.it(
+                                "CRITICAL ERROR: dns MX data extraction failed: {}\t{}".format(type(e), str(e)),
+                                is_error=True
+                            )
+                            raise
+
+
                 if RUN_CONFIG["DO_MAIL_EXCHANGE"]:
                     try:
                         print("Mail Exchange Extraction")
@@ -349,6 +518,7 @@ def main():
                 if RUN_CONFIG["DO_HCJ_EXTRACTION"]:
                     try:
                         print("Headers/Cookies/Javascript analysis")
+                        GOVERNOR.set_phase("hcj")
                         a = time.time()
                         _ = ctl.ctl_analyse_hcj()
                         print("Headers/Cookies/Javascript analysis time : {}".format(time.time() - a))
@@ -371,6 +541,10 @@ def main():
         # delete url pickles
         remove_url_saved(RUN_CONFIG["PATH_URL_SAVE"])
         plog.perf_lap('Deleted Pickles')
+        del ctl
+        gc.collect()
+        print(f"{_mem()} after del ctl + gc.collect")
+        GOVERNOR.set_phase("concat_output")
 
         # concat results
         plog.it("Starting Concatenation")
@@ -418,22 +592,15 @@ def main():
         OutputProcessing(RUN_CONFIG["output_final_file_path"])
         plog.perf_lap('Output Processing Complete')
 
+        
+        retry_pending_screenshots()
+        GOVERNOR.summary(f)
+
     plog.perf_end("Crawler Finished")
 
 
 def printAllDone():
     plog.it("-" * 64 + "\n" + "-" * 64 + "\n" + "-" * 24 + "ALL DONE" + "-" * 32 + "\n" + "-" * 64 + "\n" + "-" * 64)
-
-
-def OutputProcessing(filename=None):
-    """ OutputProcessing takes any csvs produced by this program and inserts them into the database defined in RUN_CONFIG[USE_DB] """
-    if RUN_CONFIG["USE_DB"] == True:
-        plog.it("---------------------USING DATABASE------------------------")
-        op.DoIt(filename)
-    else:
-        plog.it("---------------------NO DATABASE CONFIGURED------------------------")
-        plog.it("------------------RESULTS LEFT IN OUTPUT FOLDER--------------------")
-
 
 def get_container_name():
     container_name = ""
@@ -452,3 +619,6 @@ if __name__ == '__main__':
     tic_tic2 = time.time()
     printAllDone()
     plog.it("Total time in seconds (main): {}".format(tic_tic2 - tic_tic))
+    print("Started at: ", time.ctime(tic_tic), "Finished at: ", time.ctime(tic_tic2))
+
+
